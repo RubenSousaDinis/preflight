@@ -1,65 +1,59 @@
-import Image from "next/image";
+import Link from "next/link";
+import { Container } from "./components/container";
+import { Panel } from "./components/panel";
 
-export default function Home() {
+export default function ProductPage() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <Container className="py-10 sm:py-14">
+      <section className="max-w-[46rem]">
+        <p className="font-data text-[0.68rem] uppercase tracking-[0.16em] text-accent">
+          agent boundary / transaction boundary
+        </p>
+        <h1 className="mt-3 font-display text-[2rem] font-semibold leading-[1.08] tracking-[-0.015em] sm:text-[2.6rem]">
+          An agent about to act, checked before it acts.
+        </h1>
+        <p className="mt-5 text-[1.05rem] leading-[1.65] text-ink/80">
+          An agent asks to hire another agent, or to sign a transaction. Preflight
+          answers first, and refuses when the evidence does not hold. Every answer
+          carries a signed receipt and the values that reproduce it.
+        </p>
+        <p className="mt-6 font-data text-[0.78rem]">
+          <Link href="/console" className="text-accent">
+            Open the console
+          </Link>
+        </p>
+      </section>
+
+      <div className="mt-12 grid gap-4 md:grid-cols-2">
+        <Panel eyebrow="vetAgent" title="The agent boundary">
+          <p className="text-ink/80">
+            Reads the attested grade for an agent, connects to the live target, and
+            re-enumerates every page of its tool surface. Drift outranks the letter:
+            an A graded agent whose live fingerprint has moved since grading is
+            refused, because that is the rug pull the grade cannot see.
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+        </Panel>
+
+        <Panel eyebrow="txGuard" title="The transaction boundary">
+          <p className="text-ink/80">
+            Forks the chain at the live block and simulates the exact calldata, then
+            runs four checks: an unlimited or unknown spender approval, a honeypot,
+            value routed to an unverified callee, and an owner or upgrade path
+            firing. A check that cannot run blocks the action.
+          </p>
+        </Panel>
+      </div>
+
+      <div className="mt-4">
+        <Panel eyebrow="audit trail" title="What a decision leaves behind">
+          <p className="max-w-[46rem] text-ink/80">
+            Each verdict emits an Ed25519 signed receipt, hash chained to the one
+            before it. A transaction verdict records the block, sender, callee,
+            calldata hash and value it was produced from, so the same five values
+            re-run to the same verdict or the claim is falsified.
+          </p>
+        </Panel>
+      </div>
+    </Container>
   );
 }
