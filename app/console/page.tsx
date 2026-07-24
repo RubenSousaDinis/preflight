@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ConsoleNav } from "../components/console-nav";
 import { Container } from "../components/container";
 import { Leaderboard } from "../components/board/leaderboard";
 import { SubmitForm } from "../components/board/submit-form";
@@ -9,8 +10,7 @@ import { DemoTargetLine } from "../components/floor/demo-target-line";
 import { HiringFloor } from "../components/floor/hiring-floor";
 import { Panel } from "../components/panel";
 import { ReceiptChain } from "../components/receipts/receipt-chain";
-import { PaymentSummary } from "../components/transcript/payment-summary";
-import { TranscriptPanel } from "../components/transcript/transcript-panel";
+import { LiveRun } from "../components/transcript/live-run";
 import { loadFirewallQueue } from "../lib/firewall";
 import { FLOOR_POLICY, loadFloor } from "../lib/floor";
 import { readDemoTarget } from "../lib/demo-target";
@@ -53,8 +53,11 @@ export default async function ConsolePage() {
         </p>
       </header>
 
-      <div className="mt-8 grid gap-4">
+      <ConsoleNav />
+
+      <div className="mt-6 grid gap-4">
         <Panel
+          id="beat-1"
           eyebrow="beat 1"
           title="Hiring floor"
           status={`minimum grade ${FLOOR_POLICY.minGrade}`}
@@ -82,12 +85,16 @@ export default async function ConsolePage() {
         </Panel>
 
         <Panel
+          id="beat-1-run"
           eyebrow="beat 1"
           title="Run transcript"
-          status={`${events.length} events`}
+          status="driven live"
         >
-          <TranscriptPanel events={events} />
-          <p className="mt-3 max-w-[46rem] text-[0.85rem] leading-snug text-ink/60">
+          <LiveRun
+            fixtureEvents={events}
+            defaultCandidates={rows.map((row) => row.agentId).join(" ")}
+          />
+          <p className="mt-4 max-w-[46rem] text-[0.85rem] leading-snug text-ink/60">
             The agent that turns hostile here passed the gate on its letter and on
             its live fingerprint, both. Its hostile turn fires on a condition that
             was not present at grading time, so what stops it is the boundary
@@ -95,11 +102,8 @@ export default async function ConsolePage() {
           </p>
         </Panel>
 
-        <Panel eyebrow="beat 1" title="Budget">
-          <PaymentSummary events={events} />
-        </Panel>
-
         <Panel
+          id="beat-2"
           eyebrow="beat 2"
           title="Firewall"
           status={`${queue.length} checked`}
@@ -111,6 +115,7 @@ export default async function ConsolePage() {
         </Panel>
 
         <Panel
+          id="beat-3"
           eyebrow="beat 3"
           title="Graded onchain"
           status={`${board.entries.length} listed`}
@@ -135,10 +140,18 @@ export default async function ConsolePage() {
         </Panel>
 
         <Panel
+          id="audit-trail"
           eyebrow="audit trail"
-          title="Receipts"
+          title="Receipts, the reference chain"
           status={`${receipts.receipts.length} in the chain`}
         >
+          <p className="mb-3 max-w-[46rem] text-[0.9rem] leading-snug text-ink/70">
+            The receipts a run produces are shown with that run, under beat 1.
+            This chain is the fixture set, kept here because the verifier rejects
+            it and a screen that can only ever agree is not worth putting a
+            verifier behind. Compare the two: same panel, same verifier, opposite
+            answers.
+          </p>
           <ReceiptChain log={receipts} />
         </Panel>
       </div>

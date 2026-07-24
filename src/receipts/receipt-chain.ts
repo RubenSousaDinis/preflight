@@ -32,6 +32,7 @@ import type {
 import { canonicalizeValue } from '../validator/canonical.ts'
 import { methodologyVersion } from '../validator/methodology.ts'
 import { createSigner, verifySignature, type ReceiptSigner } from './signer.ts'
+import type { HcsReceiptMirror } from './hcs-mirror.ts'
 
 export function serializeTxTuple(tuple: TxTuple): SerializedTxTuple {
   return {
@@ -269,9 +270,26 @@ export async function verifyChain(receipts: Receipt[]): Promise<ChainVerificatio
 export class ReceiptChain {
   #receipts: Receipt[] = []
   #signer: ReceiptSigner
+  #mirror: HcsReceiptMirror | null
 
-  constructor(signer: ReceiptSigner = defaultSigner()) {
+  constructor(signer: ReceiptSigner = defaultSigner(), mirror: HcsReceiptMirror | null = null) {
     this.#signer = signer
+    this.#mirror = mirror
+  }
+
+  /**
+   * Hands a receipt to the mirror, if one is attached.
+   *
+   * Deliberately not awaited and wrapped in a catch that cannot rethrow: the mirror is decoration on the
+   * chain, and nothing about it may delay or fail a gate decision.
+   */
+  #mirrorReceipt(receipt: Receipt): void {
+    if (this.#mirror === null) return
+    try {
+      this.#mirror.submit(receipt, this.#receipts.length)
+    } catch {
+      // Swallowed on purpose. A mirror that could raise here would be in the hot path.
+    }
   }
 
   get signerPubKey(): Hex {
@@ -296,6 +314,7 @@ export class ReceiptChain {
       index: this.#receipts.length + 1,
     })
     this.#receipts.push(receipt)
+    this.#mirrorReceipt(receipt)
     return receipt
   }
 
@@ -336,6 +355,7 @@ export class ReceiptChain {
       signerPubKey: this.#signer.publicKey,
     }
     this.#receipts.push(receipt)
+    this.#mirrorReceipt(receipt)
     return receipt
   }
 

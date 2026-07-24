@@ -104,6 +104,13 @@ export const ENV = {
    */
   fixtureDeployerPrivateKey: 'FIXTURE_DEPLOYER_PRIVATE_KEY',
   fixtureDeployerAddress: 'FIXTURE_DEPLOYER_ADDRESS',
+  /**
+   * The HCS topic the receipt chain is mirrored to, optional.
+   *
+   * Absent means no mirror runs, which costs nothing: the signed chain is the record either way. The
+   * topic is a mirror and never a source, so nothing in a verdict path reads this.
+   */
+  hcsReceiptTopic: 'HCS_RECEIPT_TOPIC_ID',
 } as const
 
 function env(name: string): string | undefined {

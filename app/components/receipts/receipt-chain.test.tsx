@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Receipt } from "@/src/shared";
-import { linksToPrevious, loadReceipts } from "../../lib/receipts";
+import { linksToPrevious } from "../../lib/receipt-view";
+import { loadReceipts } from "../../lib/receipts";
 import { ReceiptChain } from "./receipt-chain";
 
 /*
@@ -16,12 +17,32 @@ function stripTags(markup: string): string {
 
 test("a chain the verifier has not run against never renders as verified", async () => {
   const log = await loadReceipts();
-  assert.equal(log.verification, null);
 
-  const text = stripTags(renderToStaticMarkup(<ReceiptChain log={log} />));
+  // The component's null branch, exercised directly: absence of a check is
+  // rendered as absence of a check, never as a check that passed.
+  const text = stripTags(
+    renderToStaticMarkup(<ReceiptChain log={{ ...log, verification: null }} />),
+  );
   assert.match(text, /not verified/);
   assert.doesNotMatch(text, /chain verified/);
   assert.match(text, /nothing here claims the signatures hold/);
+});
+
+test("the verifier rejects the stand-in fixtures, and the panel says so", async () => {
+  const log = await loadReceipts();
+
+  // The fixture hashes and signatures are labelled stand-ins rather than Ed25519
+  // output, so a verifier that accepted them would be the broken thing here.
+  assert.ok(log.verification, "verifyChain has to have produced a verdict");
+  assert.equal(log.verification.ok, false);
+  assert.ok(
+    log.verification.reason && log.verification.reason.length > 0,
+    "a rejection has to say which two values disagree",
+  );
+
+  const text = stripTags(renderToStaticMarkup(<ReceiptChain log={log} />));
+  assert.match(text, /chain broken/);
+  assert.doesNotMatch(text, /chain verified/);
 });
 
 test("a broken chain renders the break and where it happened", async () => {

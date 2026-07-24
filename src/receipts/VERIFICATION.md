@@ -60,3 +60,53 @@ A single boolean would not be usable on stage, so every failure names the receip
   can fail on a write, because losing a receipt to a slow store is worse than an unpersisted chain.
 - Open question 2: `signerPubKey` travels inside every receipt, so post-event verification needs no
   published key. Publishing one is only needed if a verifier wants to know the signer was ours.
+
+## D5e, the HCS receipt mirror
+
+Run 2026-07-25, on Hedera Testnet.
+
+```
+topic id / create tx:          0.0.9736592
+                               0.0.9695674@1784937004.030466444
+                               memo "preflight receipt chain mirror, ethglobal lisbon 2026"
+explorer link:                 https://hashscan.io/testnet/topic/0.0.9736592
+                               (a mirror of the signed chain, never a source)
+
+message count vs local
+receipt count at check:        5 and 5. The public mirror node REST API reports sequence_number 5 for
+                               the topic, and the local chain held five receipts.
+sampled message hash matches
+local receipt:                 yes. The newest message decodes to
+                               {"receiptId":"receipt-0005",
+                                "receiptHash":"0x25614979e261ad17c72abd2ba5208cb7026dd0ed1e5f2c434a1d143836e9f3dd",
+                                "index":5}
+                               and the local receipt-0005 hashes to 0x25614979e261ad17…, the same value.
+
+fire and forget, measured:     five receipts emitted in 4 ms, and the mirror state immediately after
+                               read {mirrored: 0, pending: 5}. Nothing had been submitted yet, which is
+                               the point: the gate produced and signed five receipts without waiting on
+                               a network it does not depend on. After the flush the state read
+                               {mirrored: 5, pending: 0, failed: 0}.
+
+suite: 8 tests, all passing, offline, including that a mirror which always fails never fails the chain,
+that a transient failure is retried until it lands, and that one message which never lands does not
+stall the ones behind it.
+```
+
+### What is written, and what is not
+
+One message per receipt, carrying the receipt id, its hash, and its index. Nothing else. The chain
+verifies from hashes, so publishing whole receipts would add nothing and bloat every message, and the
+verdict text stays where it is signed.
+
+The write goes through the Hedera Agent Kit's own `HcsAuditTrailHook`, which is the tool 02-DECISIONS
+§12 banks: the hook posts the message to the topic with the payer client. Its tool-execution wrapper is
+not used, because what is being audited here is a receipt rather than one of the kit's own tool calls.
+Topic creation uses the SDK's `TopicCreateTransaction`, which is the one-off half.
+
+### Still needed
+
+`HCS_RECEIPT_TOPIC_ID=0.0.9736592` in the Vercel environment, and the explorer link rendered beside the
+receipt chain in the console labelled as a mirror, plus the same link in the README enhancements
+section. Without the variable the mirror simply does not run, and the signed chain is unchanged: the
+mirror is decoration on the receipts, not part of them.
