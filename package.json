@@ -10,12 +10,16 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "d4": "node --env-file-if-exists=.env.local --import tsx src/gates/tx/d4/unseen-run.ts",
     "test:live": "node --env-file-if-exists=.env.local --import tsx --test --test-concurrency=1 \"src/**/*.test.ts\"",
     "doctor": "node --env-file-if-exists=.env.local src/shared/doctor.ts"
   },
   "dependencies": {
     "@0gfoundation/0g-storage-ts-sdk": "^1.2.10",
+    "@anthropic-ai/sdk": "^0.115.0",
     "@polygraphso/litmus": "^0.36.0",
+    "@x402/fetch": "^2.19.0",
+    "@x402/hedera": "^2.19.0",
     "ethers": "6.13.1",
     "next": "16.2.11",
     "qrcode": "^1.5.4",

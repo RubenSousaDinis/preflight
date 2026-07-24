@@ -91,3 +91,91 @@ text, so nothing here is tuned to the fixture.
   txRef and the receipt subject records `stubbed: true`. The event is never omitted: a stream missing
   its payment events reads as if payment never happened.
 - The registry read, once D1 and A3b land, replacing the per-candidate stub with the real record.
+
+## B3 prep, the [claude] steps, ready ahead of the operator drive
+
+Steps 3, 4 and 5 are done. Steps 1, 2, 6, 7 and 8 need the funded payer and a decision about the
+facilitator, and are prepared to copy-paste level below.
+
+### Step 3, the budget with an irreversible freeze
+
+`src/demo/budget.ts`. Total, spent, remaining and frozen, with the arithmetic in the object rather than
+in the loop that reads it. Once frozen it refuses every spend, including a zero one, and freezing twice
+keeps the first reason because that is the one that stopped the run. An overspend throws rather than
+clamping, since a clamped budget keeps a run going with numbers that no longer describe it. A clearable
+freeze would be a pause, and a pause is not what beat 1 claims.
+
+### Step 4, the screener
+
+Already shipped with E2: `src/demo/output-check.ts` runs the engine's own C-01 scanners over live tool
+output. It is the same mechanism that grades a server for injection, so there is no second opinion to
+diverge, and the tests assert it fires on payloads nothing like E1's while staying quiet on ordinary
+text. B3's estimate calls this the hour hiding inside the task; it is spent.
+
+### Step 5, freeze then refuse
+
+Also shipped with E2, and now backed by the budget object: a hit emits `injectionCaught`, then `frozen`
+with the spend and what is left, then a chained receipt for each, and the loop refuses to spend again.
+Fifteen harness tests cover it, including that no `paid` event appears after the hostile turn with four
+calls allowed.
+
+### The rail, ready for step 1
+
+`src/demo/payment-rail.ts` carries three implementations behind one interface, and the difference
+between them is labelled rather than hidden:
+
+| Rail | What settles | Where it is used |
+|---|---|---|
+| `stub` | nothing, and every event says so | the default, and every rehearsal so far |
+| `hedera-transfer` | a real HBAR transfer, waiting for consensus | proving the rail, and the 02-DECISIONS §12 minimal-payment keep if the x402 leg is cut |
+| `hedera-x402` | the full 402 challenge, signed payment, facilitator settlement | beat 1 once a resource server and facilitator are up |
+
+A failed settlement never retries, because retrying against an unknown settlement state is how one call
+pays twice. The x402 rail refuses without a resource URL rather than falling back to an unpaid call.
+
+### Read-only proof that the rail is reachable, run 2026-07-25
+
+```
+node --env-file-if-exists=.env.local src/demo/cli.ts rail-status --to 0.0.9695674 --amount 100000000
+
+payer        0.0.9695674
+balance      939.61271387 HBAR (93961271387 tinybars)
+dry run      100000000 tinybars (1 HBAR) to 0.0.9695674
+             dry-run 0.0.9695674@1784935865.050866010
+```
+
+The ECDSA key parses, testnet answered, and the transfer built and froze with a real transaction id
+assigned. Nothing was submitted: moving funds is a `[human]` step and stays one.
+
+### The commands for your drive
+
+```
+# step 1, prove the rail. The first moves nothing; the second sends one fee and prints both balances.
+node --env-file-if-exists=.env.local src/demo/cli.ts rail-status --to <recipient> --amount 100000000
+node --env-file-if-exists=.env.local src/demo/cli.ts settle      --to <recipient> --amount 100000000
+
+# steps 6 and 7, the beat with a real rail. --poisoned is the hostile run, without it the control run.
+DEMO_CONTROL_TOKEN=… node --env-file-if-exists=.env.local src/demo/cli.ts beat1 <mcp url> \
+  --rail hedera-transfer --pay-to <recipient> --poisoned
+DEMO_CONTROL_TOKEN=… node --env-file-if-exists=.env.local src/demo/cli.ts beat1 <mcp url> \
+  --rail hedera-transfer --pay-to <recipient>
+```
+
+`settle` prints the balance before, the settled transaction id, the balance after, and the difference
+including fees, which is the evidence done-when 3 asks for. Run it once before the loop, then read the
+balance again at the end of the run: the only movement should be the one call's fee.
+
+### What is still open, and it is a decision rather than work
+
+The x402 leg needs a resource server that answers 402. E1 does not, and adding that to E1 plus running
+the self-hosted facilitator is the remaining half of B3. Two ways to go:
+
+1. **`hedera-transfer` for beat 1.** Real settlement on Hedera Testnet, a real transaction id on screen,
+   and the honest line stays exactly true: one call's fee moved, nothing after the hostile turn. What it
+   is not is an x402 challenge-response, so the track claim would rest on the Agent Kit style payment
+   rather than the protocol.
+2. **`hedera-x402` end to end.** E1 gains a 402 on `tools/call` and the facilitator runs in Docker. It is
+   the stronger claim for the x402 track and it is the part with the most moving pieces on stage.
+
+The rail interface means this is a flag at run time, not a rewrite, and the floor is committed either
+way.

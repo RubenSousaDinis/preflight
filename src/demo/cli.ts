@@ -20,6 +20,7 @@ import { dataUriPinner, pinEvidence, zerogPinner } from '../validator/pin-eviden
 import { ReceiptChain } from '../receipts/receipt-chain.ts'
 import { vetAgent } from '../gates/vet/vet-agent.ts'
 import { runTask } from './harness.ts'
+import { hederaBalance, railByName, TINYBAR_PER_HBAR } from './payment-rail.ts'
 
 const VALIDATOR = '0x0000000000000000000000000000000000000001' as const
 
@@ -137,6 +138,8 @@ async function beat1(endpoint: string): Promise<boolean> {
       receipts,
       endpointsOf: async () => [endpoint],
       toolName: 'summarize_sources',
+      rail: railByName(flagValue('rail') ?? 'stub'),
+      payTo: flagValue('pay-to'),
       vet: async (agentId, policy) =>
         vetAgent(agentId, policy, {
           validator: VALIDATOR,
@@ -160,13 +163,67 @@ async function beat1(endpoint: string): Promise<boolean> {
   return verified.ok && hiredOnce && paidOnce && caught
 }
 
+/**
+ * B3 step 1, read-only half: prove the key parses, the account exists, and the network answers, without
+ * moving anything. A dry run then builds and freezes the transfer that a real settlement would submit.
+ */
+async function railStatus(): Promise<boolean> {
+  const balance = await hederaBalance()
+  console.log(`payer        ${balance.payer}`)
+  console.log(`balance      ${balance.hbar} HBAR (${balance.tinybars} tinybars)`)
+  const to = flagValue('to')
+  const amount = BigInt(flagValue('amount') ?? '100000000')
+  if (to === undefined) {
+    console.log('pass --to <account id> to dry-run a transfer of --amount tinybars')
+    return balance.tinybars > 0n
+  }
+  const dry = await railByName('hedera-transfer', { dryRun: true }).pay({ to, amount })
+  console.log(`dry run      ${amount} tinybars (${Number(amount) / Number(TINYBAR_PER_HBAR)} HBAR) to ${to}`)
+  console.log(`             ${dry.txRef}`)
+  console.log('nothing was submitted. `settle` with the same flags is the command that sends it.')
+  return balance.tinybars >= amount
+}
+
+/** B3 step 1, the half that moves funds. Deliberately its own command, and never part of a rehearsal. */
+async function settle(): Promise<boolean> {
+  const to = flagValue('to')
+  const amount = BigInt(flagValue('amount') ?? '100000000')
+  if (to === undefined) {
+    console.log('settle needs --to <account id>')
+    return false
+  }
+  const before = await hederaBalance()
+  console.log(`balance before  ${before.hbar} HBAR`)
+  const settled = await railByName('hedera-transfer').pay({ to, amount })
+  console.log(`settled         ${settled.txRef}`)
+  const after = await hederaBalance()
+  console.log(`balance after   ${after.hbar} HBAR`)
+  console.log(`moved           ${before.tinybars - after.tinybars} tinybars, including fees`)
+  return !settled.stubbed
+}
+
 async function main(): Promise<void> {
   const [command, ...rest] = process.argv.slice(2)
+  if (command === 'rail-status') {
+    process.exitCode = (await railStatus()) ? 0 : 1
+    return
+  }
+  if (command === 'settle') {
+    process.exitCode = (await settle()) ? 0 : 1
+    return
+  }
   if (command === 'beat1') {
     process.exitCode = (await beat1(rest[0])) ? 0 : 1
     return
   }
-  console.log('usage: cli.ts beat1 <mcp url> [--pin data] [--poisoned]')
+  console.log(
+    [
+      'usage:',
+      '  cli.ts beat1 <mcp url> [--pin data] [--poisoned] [--rail stub|hedera-transfer|hedera-x402] [--pay-to <account>]',
+      '  cli.ts rail-status [--to <account id>] [--amount <tinybars>]',
+      '  cli.ts settle --to <account id> [--amount <tinybars>]',
+    ].join('\n'),
+  )
   process.exitCode = 1
 }
 
