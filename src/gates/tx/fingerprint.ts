@@ -58,6 +58,21 @@ const LOUPE_ABI = parseAbi([
 ])
 
 
+/**
+ * There is no code at this address, so there is nothing to fingerprint.
+ *
+ * A distinct type rather than a distinct message, because one caller has to tell this apart from a
+ * failure to read. Hashing empty bytes would produce a stable, meaningless value that validates
+ * every wallet, so this stays a throw here; txGuard is the one place that catches it, since a
+ * transfer to a wallet is an ordinary transaction rather than a contract that could not be seen.
+ */
+export class NoCodeAtAddress extends FingerprintError {
+  constructor(reason: string) {
+    super(reason)
+    this.name = 'NoCodeAtAddress'
+  }
+}
+
 /** `eip155:{chainId}:{checksummedAddress}`, per 02-DECISIONS section 4. */
 export function contractRef(chainId: ChainId, address: Address): ContractRef {
   return `eip155:${chainId}:${normalize(address)}`
@@ -255,7 +270,7 @@ export async function codeFingerprint(
     )
   }
   if (!hasCode(code)) {
-    throw new FingerprintError(
+    throw new NoCodeAtAddress(
       `${entry} holds no code at block ${atBlock} on chain ${chainId}, so there is nothing to fingerprint`,
     )
   }
