@@ -87,6 +87,15 @@ export const ENV = {
   /** A4's deploy output. Absent until A4 lands; every read of it fails closed until then. */
   validationRegistryAddress: 'VALIDATION_REGISTRY_ADDRESS',
   validationRegistryChainId: 'VALIDATION_REGISTRY_CHAIN_ID',
+  /**
+   * The throwaway Base Sepolia deployer for the staged fixtures.
+   *
+   * This key lives in the shared environment by design, unlike the validator and payer keys: it holds
+   * faucet funds on a testnet and signs fixture deploys, so the lane that deploys them uses it
+   * directly. It is named here so nobody hardcodes the variable name at a call site.
+   */
+  fixtureDeployerPrivateKey: 'FIXTURE_DEPLOYER_PRIVATE_KEY',
+  fixtureDeployerAddress: 'FIXTURE_DEPLOYER_ADDRESS',
 } as const
 
 function env(name: string): string | undefined {
@@ -168,6 +177,19 @@ export function validatorAddress(): Address {
   const address = requireEnv(ENV.validatorAddress, 'checking who signed a validation record')
   if (!address.startsWith('0x')) {
     throw new ConfigError(`${ENV.validatorAddress} is not a 0x address`)
+  }
+  return address as Address
+}
+
+/** The throwaway deployer that signs the staged fixture deploys on Base Sepolia. */
+export function fixtureDeployerPrivateKey(): string {
+  return requireEnv(ENV.fixtureDeployerPrivateKey, 'deploying a staged fixture contract')
+}
+
+export function fixtureDeployerAddress(): Address {
+  const address = requireEnv(ENV.fixtureDeployerAddress, 'attributing a staged fixture deploy')
+  if (!address.startsWith('0x')) {
+    throw new ConfigError(`${ENV.fixtureDeployerAddress} is not a 0x address`)
   }
   return address as Address
 }
