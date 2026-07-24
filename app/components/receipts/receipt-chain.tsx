@@ -1,5 +1,5 @@
 import type { ChainVerification, Receipt } from "@/src/shared";
-import { linksToPrevious, type ReceiptLog } from "../../lib/receipts";
+import { linksToPrevious, type ReceiptLog } from "../../lib/receipt-view";
 import { EmptyState } from "../states";
 
 /*

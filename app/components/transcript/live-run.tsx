@@ -1,9 +1,39 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import type { HarnessEvent } from "@/src/shared";
+import type { ChainVerification, HarnessEvent, Receipt } from "@/src/shared";
+import { ReceiptChain } from "../receipts/receipt-chain";
 import { PaymentSummary } from "./payment-summary";
 import { TranscriptPanel } from "./transcript-panel";
+
+/** Every receipt the stream carried, in the order the run made them. */
+function receiptsOf(events: HarnessEvent[]): Receipt[] {
+  const seen = new Set<string>();
+  const chain: Receipt[] = [];
+  for (const event of events) {
+    if (!("receipt" in event) || !event.receipt) continue;
+    if (seen.has(event.receipt.id)) continue;
+    seen.add(event.receipt.id);
+    chain.push(event.receipt);
+  }
+  return chain;
+}
+
+async function verifyReceipts(
+  receipts: Receipt[],
+): Promise<ChainVerification | null> {
+  try {
+    const response = await fetch("/api/verify-receipts", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ receipts }),
+    });
+    return (await response.json()) as ChainVerification;
+  } catch {
+    // Unverified, never verified.
+    return null;
+  }
+}
 
 /*
   Beat 1, driven live.
@@ -26,6 +56,9 @@ export function LiveRun({
   const [events, setEvents] = useState<HarnessEvent[] | null>(null);
   const [running, setRunning] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  const [verification, setVerification] = useState<ChainVerification | null>(
+    null,
+  );
   const candidatesRef = useRef<HTMLInputElement>(null);
 
   const run = useCallback(async () => {
@@ -37,6 +70,7 @@ export function LiveRun({
 
     setFailure(null);
     setEvents([]);
+    setVerification(null);
     setRunning(true);
 
     try {
@@ -59,6 +93,9 @@ export function LiveRun({
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
+      // The run is accumulated here rather than read back out of state, so what
+      // gets verified at the end is exactly what arrived.
+      const received: HarnessEvent[] = [];
 
       for (;;) {
         const { done, value } = await reader.read();
@@ -71,13 +108,20 @@ export function LiveRun({
           const line = frame.trim();
           if (!line.startsWith("data:")) continue;
           try {
-            const event = JSON.parse(line.slice(5).trim()) as HarnessEvent;
-            setEvents((current) => [...(current ?? []), event]);
+            received.push(JSON.parse(line.slice(5).trim()) as HarnessEvent);
           } catch {
             // A frame that will not parse is dropped rather than killing the run.
             // The stream is still the record; one unreadable frame is not.
           }
         }
+        setEvents([...received]);
+      }
+
+      // The run is over. Its receipts carry a claim, so they go back to B2's
+      // verifier rather than being rendered as though the claim were checked.
+      const chain = receiptsOf(received);
+      if (chain.length > 0) {
+        setVerification(await verifyReceipts(chain));
       }
     } catch (thrown) {
       setFailure(
@@ -140,6 +184,17 @@ export function LiveRun({
         </h3>
         <PaymentSummary events={shown} />
       </div>
+
+      {isLive && receiptsOf(shown).length > 0 ? (
+        <div className="mt-6">
+          <h3 className="mb-3 font-data text-[0.64rem] uppercase tracking-[0.16em] text-ink/50">
+            receipts from this run
+          </h3>
+          <ReceiptChain
+            log={{ receipts: receiptsOf(shown), verification }}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

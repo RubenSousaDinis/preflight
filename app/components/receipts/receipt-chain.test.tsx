@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Receipt } from "@/src/shared";
-import { linksToPrevious, loadReceipts } from "../../lib/receipts";
+import { linksToPrevious } from "../../lib/receipt-view";
+import { loadReceipts } from "../../lib/receipts";
 import { ReceiptChain } from "./receipt-chain";
 
 /*
