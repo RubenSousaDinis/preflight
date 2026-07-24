@@ -1,0 +1,109 @@
+import type { BoardEntry, BoardRead } from "../../lib/registry";
+import { gradeColor } from "../../lib/tokens";
+import { EmptyState, ErrorState } from "../states";
+
+/*
+  The board, sorted by grade with A first.
+
+  The validator column is always on screen. Independence here is disclosure based,
+  so the one place this surface could imply a neutrality it does not have is by
+  hiding whose attestation a row is, and it does not.
+*/
+
+const ROW_GRID =
+  "grid grid-cols-1 gap-x-5 gap-y-2 md:grid-cols-[minmax(9rem,1fr)_6rem_5rem_minmax(0,1.3fr)_9rem]";
+
+const HEADINGS = ["agent", "grade", "score", "validator", "attested"];
+
+function attestedLabel(expiresAt: number): string {
+  // Rendered as the window it is valid for rather than a wall clock time: the
+  // board is read on one machine and watched on another, and a formatted local
+  // time on a projector invites a question about which clock it came from.
+  const remaining = expiresAt - Math.floor(Date.now() / 1000);
+  if (remaining <= 0) return "expired";
+  const hours = Math.floor(remaining / 3600);
+  if (hours >= 1) return `valid ${hours}h more`;
+  return `valid ${Math.max(1, Math.floor(remaining / 60))}m more`;
+}
+
+function Row({ entry }: { entry: BoardEntry }) {
+  return (
+    <article className={`${ROW_GRID} px-4 py-4 sm:px-5`}>
+      <div className="min-w-0">
+        <p className="font-display text-[1.05rem] leading-tight font-semibold break-words">
+          {entry.name || entry.agentId}
+        </p>
+        <p className="mt-0.5 font-data text-[0.7rem] break-all text-ink/50">
+          {entry.agentId}
+        </p>
+      </div>
+      <div>
+        <span
+          className="font-display text-[1.7rem] leading-none font-semibold"
+          style={{ color: gradeColor(entry.grade) }}
+        >
+          {entry.grade}
+        </span>
+      </div>
+      <p className="font-data text-[0.85rem] text-ink/75">
+        {entry.record.score}
+      </p>
+      <p className="font-data text-[0.72rem] break-all text-ink/60">
+        {entry.record.validator}
+      </p>
+      <p className="font-data text-[0.75rem] text-ink/60">
+        {attestedLabel(entry.record.expiresAt)}
+      </p>
+    </article>
+  );
+}
+
+export function Leaderboard({ board }: { board: BoardRead }) {
+  if (board.error) {
+    return <ErrorState error={board.error} />;
+  }
+
+  if (board.entries.length === 0) {
+    return (
+      <EmptyState>
+        Nothing has been graded yet. Submit an agent below and it appears here
+        with its grade, its score, and the validator that stands behind it.
+      </EmptyState>
+    );
+  }
+
+  return (
+    <div>
+      <div className="border border-rule">
+        <div
+          className={`${ROW_GRID} hidden border-b border-rule bg-band px-4 py-2 sm:px-5 md:grid`}
+        >
+          {HEADINGS.map((heading) => (
+            <p
+              key={heading}
+              className="font-data text-[0.62rem] uppercase tracking-[0.16em] text-ink/55"
+            >
+              {heading}
+            </p>
+          ))}
+        </div>
+        <ul className="divide-y divide-rule">
+          {board.entries.map((entry) => (
+            <li key={entry.agentId}>
+              <Row entry={entry} />
+            </li>
+          ))}
+        </ul>
+      </div>
+      <p className="mt-2 font-data text-[0.72rem] text-ink/50">
+        {board.readAtBlock === null
+          ? "read height not reported by this build"
+          : `read at block ${board.readAtBlock}`}
+      </p>
+      <p className="mt-2 max-w-[46rem] text-[0.85rem] leading-snug text-ink/60">
+        A record written by any other validator is not listed here, and neither is
+        an expired one. Both are treated as absent rather than as a weaker grade.
+      </p>
+    </div>
+  );
+}
