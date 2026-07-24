@@ -16,6 +16,14 @@ import { resolveAgentDetailed } from './resolve-agent.ts'
 import { gradeAgent } from './grade-agent.ts'
 import { canonicalize } from './canonical.ts'
 import { methodologyVersion } from './methodology.ts'
+import {
+  dataUriPinner,
+  pinEvidence,
+  verifyPublishedEvidence,
+  zerogPinner,
+  type Pinner,
+} from './pin-evidence.ts'
+import { assemblePublishCall, publishValidation, readValidationWithEvidence } from './validation-registry.ts'
 
 function flagValue(name: string): string | undefined {
   const index = process.argv.indexOf(`--${name}`)
@@ -100,10 +108,94 @@ function cardForEndpoint(endpoint: string): AgentCard {
   }
 }
 
+function chosenPinner(): Pinner {
+  return flagValue('pin') === 'zerog' ? zerogPinner() : dataUriPinner
+}
+
+/**
+ * A3b, prepared to copy-paste level.
+ *
+ * Without `--send` it grades, publishes the evidence, prints both transactions' exact arguments, and
+ * stops. That is the point: the operator reads the arguments before a key is anywhere near them. With
+ * `--send` it signs both legs and then confirms by reading the record back, because a send receipt is
+ * not evidence that a record exists.
+ */
+async function publish(agentId: string, chainId: number): Promise<boolean> {
+  const resolved = await resolveAgentDetailed(agentId, { chainId })
+  const result = await gradeAgent(resolved.card)
+  console.log(`grade         ${result.grade}  score ${result.score}  ${result.methodologyVersion}`)
+
+  const pinned = await pinEvidence(result.bundle, chosenPinner())
+  console.log(`evidence      ${pinned.provider}, ${pinned.bytes} bytes`)
+  console.log(`  uri         ${pinned.uri.slice(0, 120)}${pinned.uri.length > 120 ? '…' : ''}`)
+  console.log(`  hash        ${pinned.hash}`)
+  if (pinned.contentAddress) console.log(`  root        ${pinned.contentAddress}`)
+  if (pinned.hash !== result.evidenceHash) {
+    console.log('refused: the published bytes do not hash to the graded evidence hash')
+    return false
+  }
+
+  const call = assemblePublishCall({ result, agentId, responseURI: pinned.uri })
+  console.log(`registry      ${call.registry} on chain ${call.chainId}`)
+  console.log(`requestHash   ${call.requestHash}`)
+  console.log(`  leg 1       validationRequest(validator, agentId, responseURI, requestHash)`)
+  console.log(`              sent by the agent owner or an approved operator`)
+  console.log(`  leg 2       validationResponse(requestHash, ${result.score}, responseURI, ${result.evidenceHash}, ${JSON.stringify(result.methodologyVersion)})`)
+  console.log(`              sent by the validator, and only the validator`)
+
+  if (!process.argv.includes('--send')) {
+    console.log('\nnothing was sent. re-run with --send to sign both legs.')
+    return true
+  }
+
+  const record = await publishValidation(result, agentId, pinned.uri, {
+    requestExists: process.argv.includes('--request-exists'),
+  })
+  console.log(`\nlanded        tx ${record.txHash}`)
+  console.log(`read back     score ${record.score}, tag ${record.tag}, expiresAt ${record.expiresAt}`)
+  console.log(`  validator   ${record.validator}`)
+  console.log(`  responseURI ${record.responseURI.slice(0, 120) || '(not in the log)'}`)
+  return true
+}
+
 async function main(): Promise<void> {
   const [command, ...rest] = process.argv.slice(2)
   const chainId = Number(flagValue('chain') ?? identityChainId())
 
+  if (command === 'publish') {
+    try {
+      process.exitCode = (await publish(rest[0], chainId)) ? 0 : 1
+    } catch (err) {
+      const code = isPreflightError(err) ? err.code : 'UNTYPED'
+      console.log(`refused [${code}] ${reasonOf(err)}`)
+      process.exitCode = 1
+    }
+    return
+  }
+  if (command === 'read-validation') {
+    try {
+      const record = await readValidationWithEvidence(
+        rest[0],
+        flagValue('validator') as `0x${string}` | undefined,
+      )
+      if (record === null) {
+        console.log('null: no usable record from this validator, which the gate reads as a refusal')
+        process.exitCode = 1
+        return
+      }
+      console.log(JSON.stringify(record, null, 2))
+    } catch (err) {
+      console.log(`refused ${reasonOf(err)}`)
+      process.exitCode = 1
+    }
+    return
+  }
+  if (command === 'verify-evidence') {
+    const check = await verifyPublishedEvidence(rest[0], rest[1] as `0x${string}`)
+    console.log(`${check.ok ? 'MATCHES' : 'MISMATCH'}  ${check.hash}  (${check.bytes} bytes)`)
+    process.exitCode = check.ok ? 0 : 1
+    return
+  }
   if (command === 'methodology') {
     console.log(methodologyVersion())
     return
@@ -138,6 +230,9 @@ async function main(): Promise<void> {
       '  cli.ts scan <from> <to> [--chain <id>]',
       '  cli.ts grade <agentId> [--chain <id>] [--write <path>]',
       '  cli.ts grade-endpoint <https url> [--write <path>]',
+      '  cli.ts publish <agentId> [--pin zerog|data] [--send] [--request-exists]',
+      '  cli.ts read-validation <agentId> [--validator <address>]',
+      '  cli.ts verify-evidence <uri> <expectedHash>',
       '  cli.ts methodology',
     ].join('\n'),
   )
