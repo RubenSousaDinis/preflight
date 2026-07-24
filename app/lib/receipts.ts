@@ -1,5 +1,7 @@
+import { verifyChain } from "@/src/receipts/receipt-chain";
 import type { ChainVerification, Receipt } from "@/src/shared";
 import { FIXTURE_RECEIPT_CHAIN } from "@/src/shared/fixtures";
+import { toRenderableError } from "./errors";
 
 export type ReceiptLog = {
   receipts: Receipt[];
@@ -14,16 +16,30 @@ export type ReceiptLog = {
 };
 
 /*
-  TODO-INTEGRATE: B2 owns emitReceipt and verifyChain (01-INTERFACES section 5).
-  Until it merges, the panel renders the frozen fixture chain, whose hashes and
-  signatures are labelled stand-ins rather than Ed25519 output, and `verification`
-  stays null so nothing on screen claims they were checked.
+  B2's verifyChain runs against whatever is on screen, and what it says is what the
+  panel renders, intact or broken.
 
-  When B2 lands this calls verifyChain(receipts) and renders what it returns,
-  including a broken chain as loudly as an intact one.
+  The chain it runs against today is still the fixture chain, whose hashes and
+  signatures are labelled stand-ins rather than Ed25519 output, so the verifier is
+  expected to reject it. That is the correct outcome and the panel shows it: a
+  chain that does not verify renders as a chain that does not verify, which is a
+  more useful thing for this screen to be able to do than always agreeing.
+
+  TODO-INTEGRATE: the receipts themselves come from the live gates once beat 1 runs
+  end to end. Nothing above this line changes when they do.
 */
 export async function loadReceipts(): Promise<ReceiptLog> {
-  return { receipts: FIXTURE_RECEIPT_CHAIN, verification: null };
+  const receipts = FIXTURE_RECEIPT_CHAIN;
+  try {
+    return { receipts, verification: await verifyChain(receipts) };
+  } catch (thrown) {
+    // A verifier that could not run leaves the chain unverified, never verified.
+    const failure = toRenderableError(thrown);
+    return {
+      receipts,
+      verification: { ok: false, brokenAt: null, reason: failure.reason },
+    };
+  }
 }
 
 /**
