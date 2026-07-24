@@ -1,0 +1,9 @@
+# Foundry build output and run artifacts.
+out/
+cache/
+broadcast/
+
+# Any Solidity dependency pulled in locally. Nothing here is required to build the fixtures;
+# if forge-std is ever cloned in for a local unit test, it stays out of the repo.
+dependencies/
+lib/
