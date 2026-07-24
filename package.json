@@ -10,6 +10,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "d4": "node --env-file-if-exists=.env.local --import tsx src/gates/tx/d4/unseen-run.ts",
     "test:live": "node --env-file-if-exists=.env.local --import tsx --test --test-concurrency=1 \"src/**/*.test.ts\"",
     "doctor": "node --env-file-if-exists=.env.local src/shared/doctor.ts"
   },
