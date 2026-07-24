@@ -29,6 +29,8 @@ import { DEFAULT_POLICY, vetAgent, type VetAgentOptions } from '../gates/vet/vet
 import { resolveAgent } from '../validator/resolve-agent.ts'
 import { checkToolOutput, textOfToolResult } from './output-check.ts'
 import { openWorker, type WorkerSession } from './mcp-call.ts'
+import { Budget } from './budget.ts'
+import { stubbedRail, type PaymentRail } from './payment-rail.ts'
 
 export interface PaymentResult {
   /** Identifier on the payment rail, for the receipt panel. */
@@ -54,7 +56,14 @@ export interface RunTaskOptions {
   vetOptions?: VetAgentOptions
   endpointsOf?: (agentId: AgentId) => Promise<string[]>
   openWorkerImpl?: (endpoint: string) => Promise<WorkerSession>
-  /** TODO-INTEGRATE (B3): the x402 leg replaces this, and `stubbed` turns false. */
+  /**
+   * The rail that settles a call fee. Defaults to the labelled stub.
+   *
+   * B3 passes a real one, and `stubbed` turns false in the event and in the receipt subject.
+   */
+  rail?: PaymentRail
+  /** The account or resource the fee is paid to, which the rail interprets. */
+  payTo?: string
   pay?: (agentId: AgentId, amount: bigint) => Promise<PaymentResult>
   toolName?: string
   callTimeoutMs?: number
@@ -91,14 +100,21 @@ export async function* runTask(
   const endpointsOf =
     options.endpointsOf ?? (async (agentId: AgentId) => (await resolveAgent(agentId)).mcpEndpoints)
   const open = options.openWorkerImpl ?? ((endpoint: string) => openWorker(endpoint, options.callTimeoutMs))
+  const rail = options.rail ?? stubbedRail
   const pay =
     options.pay ??
-    (async (agentId: AgentId): Promise<PaymentResult> => ({
-      txRef: `stubbed-payment-${agentId}-${now()}`,
-      stubbed: true,
-    }))
+    (async (agentId: AgentId, amount: bigint): Promise<PaymentResult> => {
+      const settled = await rail.pay({
+        to: options.payTo ?? agentId,
+        amount,
+        resource: options.payTo,
+      })
+      return { txRef: settled.txRef, stubbed: settled.stubbed }
+    })
 
-  let spent = 0n
+  // The budget owns the arithmetic and the freeze. Once frozen it refuses every further spend, so the
+  // rule is a property of the object rather than of the order the loop happens to check things in.
+  const budget = new Budget(spec.budget)
   let frozen = false
   const hired: AgentId[] = []
   const refused: AgentId[] = []
@@ -132,7 +148,7 @@ export async function* runTask(
     at: now(),
     hired: [...hired],
     refused: [...refused],
-    spent: spent.toString(),
+    spent: budget.spent.toString(),
     budget: spec.budget.toString(),
     receiptCount: receipts.length,
     ...(reason === 'nothing-hired' ? {} : {}),
@@ -171,36 +187,38 @@ export async function* runTask(
       }
       if (recheck.verdict !== 'HIRE') {
         frozen = true
+        budget.freeze(`the worker was refused on recheck: ${recheck.reason}`)
         const receipt = await receipts.emitSubject({
           kind: 'freeze',
           reason: recheck.reason,
-          spent: spent.toString(),
+          spent: budget.spent.toString(),
         } satisfies JsonValue)
         yield {
           type: 'frozen',
           at: now(),
           reason: `the worker was refused on recheck: ${recheck.reason}`,
-          spentSoFar: spent.toString(),
-          remaining: (spec.budget - spent).toString(),
+          spentSoFar: budget.spent.toString(),
+          remaining: budget.remaining.toString(),
           receipt,
         }
         break
       }
     }
 
-    if (spent + fee > spec.budget) {
+    if (!budget.canSpend(fee)) {
       frozen = true
+      budget.freeze('the next call would exceed the budget')
       const receipt = await receipts.emitSubject({
         kind: 'freeze',
         reason: 'the next call would exceed the budget',
-        spent: spent.toString(),
+        spent: budget.spent.toString(),
       } satisfies JsonValue)
       yield {
         type: 'frozen',
         at: now(),
         reason: 'the next call would exceed the budget, so nothing further was spent',
-        spentSoFar: spent.toString(),
-        remaining: (spec.budget - spent).toString(),
+        spentSoFar: budget.spent.toString(),
+        remaining: budget.remaining.toString(),
         receipt,
       }
       break
@@ -212,22 +230,23 @@ export async function* runTask(
       payment = await pay(chosen.agentId, fee)
     } catch (err) {
       frozen = true
+      budget.freeze(`the payment did not settle: ${reasonOf(err)}`)
       const receipt = await receipts.emitSubject({
         kind: 'freeze',
         reason: `the payment did not settle: ${reasonOf(err)}`,
-        spent: spent.toString(),
+        spent: budget.spent.toString(),
       } satisfies JsonValue)
       yield {
         type: 'frozen',
         at: now(),
         reason: `the payment did not settle, so the call was not made: ${reasonOf(err)}`,
-        spentSoFar: spent.toString(),
-        remaining: (spec.budget - spent).toString(),
+        spentSoFar: budget.spent.toString(),
+        remaining: budget.remaining.toString(),
         receipt,
       }
       break
     }
-    spent += fee
+    budget.spend(fee)
     const paidReceipt = await receipts.emitSubject({
       kind: 'payment',
       agentId: chosen.agentId,
@@ -260,17 +279,18 @@ export async function* runTask(
     } catch (err) {
       // A worker that hangs or fails ends the run frozen, never in done with work completed.
       frozen = true
+      budget.freeze(`the worker did not answer: ${reasonOf(err)}`)
       const receipt = await receipts.emitSubject({
         kind: 'freeze',
         reason: `the worker did not answer: ${reasonOf(err)}`,
-        spent: spent.toString(),
+        spent: budget.spent.toString(),
       } satisfies JsonValue)
       yield {
         type: 'frozen',
         at: now(),
         reason: `the worker did not answer, so the run stopped: ${reasonOf(err)}`,
-        spentSoFar: spent.toString(),
-        remaining: (spec.budget - spent).toString(),
+        spentSoFar: budget.spent.toString(),
+        remaining: budget.remaining.toString(),
         receipt,
       }
       break
@@ -301,18 +321,19 @@ export async function* runTask(
       }
 
       frozen = true
+      budget.freeze('the worker turned on the caller')
       const frozenReceipt = await receipts.emitSubject({
         kind: 'freeze',
         reason: 'the worker turned on the caller, so the budget was frozen',
-        spent: spent.toString(),
+        spent: budget.spent.toString(),
       } satisfies JsonValue)
       yield {
         type: 'frozen',
         at: now(),
         // One honest call ran and was paid for. What is saved is the budget and every call after this.
         reason: 'the budget was frozen after the hostile turn; the one call already made was paid for',
-        spentSoFar: spent.toString(),
-        remaining: (spec.budget - spent).toString(),
+        spentSoFar: budget.spent.toString(),
+        remaining: budget.remaining.toString(),
         receipt: frozenReceipt,
       }
       break

@@ -66,6 +66,9 @@ function harness(overrides: Partial<TxGuardDeps> & { simulation?: SimulationResu
     async storageAt() {
       return `0x${'00'.repeat(32)}`
     },
+    async call() {
+      return '0x'
+    },
     async release() {
       state.released += 1
     },
@@ -116,6 +119,9 @@ test('a simulation that dies mid run blocks rather than returning partial deltas
     },
     async storageAt() {
       return `0x${'00'.repeat(32)}`
+    },
+    async call() {
+      return '0x'
     },
     async release() {
       return undefined
