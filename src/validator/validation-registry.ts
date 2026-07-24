@@ -175,7 +175,17 @@ export interface ReadOptions {
   /** Unix seconds, injected so a test can pin the clock. */
   now?: number
   ttlSeconds?: number
+  /**
+   * Return an expired record instead of null.
+   *
+   * Off by default, so every ordinary caller gets the fail-closed behavior. B1 turns it on because it
+   * has to say "expired" rather than "absent" in a refusal reason, and it applies the bound itself.
+   */
+  includeExpired?: boolean
 }
+
+/** A record plus the two values the registry has and 01-INTERFACES §3 does not name. */
+export type ReadRecord = ValidationRecord & { lastUpdate: number; requestHash: Hex }
 
 interface RawStatus {
   validatorAddress: Address
@@ -232,7 +242,7 @@ export async function readValidation(
   agentId: AgentId,
   validator?: Address,
   options: ReadOptions = {},
-): Promise<ValidationRecord | null> {
+): Promise<ReadRecord | null> {
   const registryConfig = options.registry === undefined ? validationRegistry() : null
   const registry = getAddress(options.registry ?? registryConfig!.address)
   const chainId = options.chainId ?? registryConfig!.chainId
@@ -274,7 +284,7 @@ export async function readValidation(
 
   const lastUpdate = Number(newest.status.lastUpdate)
   const expiresAt = lastUpdate + ttl
-  if (expiresAt <= now) return null
+  if (expiresAt <= now && options.includeExpired !== true) return null
 
   const score = newest.status.response
   if (gradeForScore(score) === null) {
@@ -293,8 +303,46 @@ export async function readValidation(
     tag: newest.status.tag,
     validator: newest.status.validatorAddress,
     expiresAt,
+    lastUpdate,
+    requestHash: newest.requestHash,
+    // Until the event is read, the only identifier the storage read gives back is the requestHash.
     txHash: newest.requestHash,
   }
+}
+
+/**
+ * Which other validators have written about this agent.
+ *
+ * Used only to make a refusal legible: telling the operator that a record exists from someone else is
+ * better than reporting a bare absence, and it can never change a decision, because the trusted read
+ * has already returned nothing by the time this is called.
+ */
+export async function readForeignValidators(
+  agentId: AgentId,
+  ours?: Address,
+  options: ReadOptions = {},
+): Promise<Address[]> {
+  const registryConfig = options.registry === undefined ? validationRegistry() : null
+  const registry = getAddress(options.registry ?? registryConfig!.address)
+  const chainId = options.chainId ?? registryConfig!.chainId
+  const expected = getAddress(ours ?? validatorAddress())
+  const client = publicClientFor(chainId, options.client)
+
+  const requestHashes = (await client.readContract({
+    address: registry,
+    abi: VALIDATION_REGISTRY_ABI,
+    functionName: 'getAgentValidations',
+    args: [toTokenId(agentId)],
+  })) as readonly Hex[]
+
+  const found = new Set<Address>()
+  for (const requestHash of requestHashes) {
+    const status = await readStatus(client, registry, requestHash)
+    if (status === null) continue
+    if (status.responseHash === ZERO_HASH) continue
+    if (status.validatorAddress !== expected) found.add(status.validatorAddress)
+  }
+  return [...found]
 }
 
 const VALIDATION_RESPONSE_EVENT = {
@@ -407,16 +455,14 @@ export async function readValidationWithEvidence(
   agentId: AgentId,
   validator?: Address,
   options: ReadOptions = {},
-): Promise<(ValidationRecord & { requestHash: Hex }) | null> {
+): Promise<ReadRecord | null> {
   const record = await readValidation(agentId, validator, options)
   if (record === null) return null
-  const requestHash = record.txHash
-  const event = await readResponseEvent(requestHash, options)
+  const event = await readResponseEvent(record.requestHash, options)
   return {
     ...record,
-    requestHash,
     responseURI: event?.responseURI ?? '',
-    txHash: event?.txHash ?? requestHash,
+    txHash: event?.txHash ?? record.requestHash,
   }
 }
 

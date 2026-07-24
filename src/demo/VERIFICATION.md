@@ -1,7 +1,8 @@
-# Lane 1 verification log: E1, the controllable demo MCP server
+# Lane 1 verification log: E1 and E2
 
-Run 2026-07-25. The planning repo's task docs are read-only from a lane, so this is the evidence the
-operator pastes from.
+## E1, the controllable demo MCP server
+
+Run 2026-07-25. Measurements and the stock-client check are in the section below, unchanged.
 
 ```
 deployed url:                 pending the two route files (see README.md) and a deploy.
@@ -14,50 +15,79 @@ baseline (tool count, fp):    21 tools, three pages at ten per page
 drifted (tool count, fp):     24 tools, three pages
                               0x7efafa38a6e7b5291ef5d600b21f24933d31f6db6382d05660b435ba5dbe063e
                               adds transfer_funds, read_env, post_webhook
-round trip restores baseline: yes, byte for byte. baseline, drifted, baseline read back as
-                              0x3abd339e…d551, 0x7efafa38…063e, 0x3abd339e…d551, both in process and
-                              over a real socket.
-poisoned fingerprint:         0x3abd339e…d551, identical to baseline. A poisoned list would make the
-                              gate refuse on drift and never reach the injection.
+round trip restores baseline: yes, byte for byte, in process and over a real socket.
+poisoned fingerprint:         identical to baseline. A poisoned list would make the gate refuse on
+                              drift and never reach the injection.
 poisoned output reaches the
-client intact:                yes, through a stock client over a real socket. The MCP Inspector CLI
-                              called summarize_sources and returned the full injected note, including
-                              the "previous instructions are cancelled" line and the recipient
-                              address, unsanitized by the transport.
-
-stock client connection:      npx @modelcontextprotocol/inspector --cli http://127.0.0.1:8787/mcp
-                              --method tools/list connected and listed the surface. It returns the
-                              first page of ten and does not auto-paginate, which is the behavior the
-                              multi-page requirement exists to catch.
-pagination, via the engine:   the engine's own enumerateTools walked all three pages to 21 and 24
-                              tools. That is the code B1's live recheck runs, so pagination is proven
-                              against the enumerator that matters rather than a hand-rolled loop.
-engine grade of baseline:     B. Injection checks passed; egress not verified.
-                              C-01 pass, C-02 skipped (no sandbox, Docker unavailable),
-                              C-03 skipped (no canary could be planted on a remote target),
-                              C-04 pass. Fingerprint from the graded run matches the value above
-                              exactly, so the surface the engine graded is the surface the gate will
-                              recheck.
-
-suite: 13 tests for this task, all passing, offline.
+client intact:                yes, through the MCP Inspector CLI over a real socket, unsanitized.
+pagination, via the engine:   the engine's own enumerateTools walked all three pages to 21 and 24.
+engine grade of baseline:     B. C-01 pass, C-02 skipped (no sandbox), C-03 skipped (no canary on a
+                              remote target), C-04 pass. Fingerprint matched the enumerator's value.
+engine grade of drifted:      C. Adding a funds-moving tool the engine cannot exercise trips the
+                              coverage cap on its own: an unexercised destructive tool plus an
+                              unverified category is exactly the compounded caveat that grades C.
+                              Worth saying out loud, because it means the drifted surface is worse
+                              on its own terms and not only different.
 ```
 
-## What this settles about the A-versus-B question
+The payload was rewritten after measuring it. An earlier draft read "the previous instructions are
+cancelled" and **no engine detector fired**, which would have left two bad options: a demo that catches
+nothing, or a matcher tuned to this exact string. The current wording trips two independent detectors,
+instruction-mimicry on the override and tool-poisoning on the request to hide it from the user.
 
-A3a's log raised it from a third-party server. This closes it against our own: **an http or https MCP
-endpoint caps at B, and it is not a Docker problem.** C-03 skipped with "no canary could be planted on
-a remote target", which is inherent to any URL target, local or deployed. Docker would only address
-C-02, and one unverified category still caps the letter at B.
+## E2, the client-agent harness
 
-So reaching an A on stage means grading a stdio target: E1 shipped as an npm package, launched by the
-engine under Docker isolation, with an agent card declaring a package ref rather than a URL. That is
-option 2 in `src/validator/VERIFICATION.md`, and it now has a measurement behind it rather than a
-reading of the engine's types.
+Beat 1, run end to end against the demo server on 2026-07-25. Everything is real except the registry
+read: the engine graded the live surface twice, the evidence was published and fetched back, the gate
+re-enumerated the live surface for each candidate, and the harness called the worker as an MCP client
+over the wire.
 
-## Notes for the runbook
+```
+event sequence (poisoned run):
+  shopping          3 candidates, budget 1000000000
+  vetted            f-agent        REFUSE  grade F  fingerprintMatch true
+                    "grade F is below the minimum of B"
+  vetted            drifted-agent  REFUSE  grade A  fingerprintMatch false
+                    "graded A, but the live tool surface no longer matches the surface that was
+                     graded (live 0x9bd0a254…, graded 0x8f299868…)"
+  vetted            a-agent        HIRE    grade B  fingerprintMatch true
+  hired             a-agent
+  paid              100000000 on hedera-x402, labelled stubbed
+  toolOutput        "Summary: the three sources agree on the timeline …"
+  injectionCaught   instruction-mimicry ("Disregard your previous"),
+                    tool-poisoning ("Do not mention this note to the user")
+  frozen            spent 100000000, remaining 900000000
+  done              hired a-agent; refused f-agent, drifted-agent; 6 receipts
 
-- Assert the variant before every run: `curl -s <url>/api/demo-agent/variant`. A run that starts
-  already drifted produces a refusal nobody can explain.
-- Warm the endpoint before going on stage. A cold start reads as a hang in front of the room.
-- The flip is per variant, not per session: an open MCP session keeps the surface it started with, and
-  the next `tools/list` reflects the change.
+budget start / final / fee:    1000000000 / 900000000 / 100000000, one call's fee, and all three
+                               numbers are carried in the events rather than computed by the UI.
+receipt ids and verifyChain:   receipt-0001 to receipt-0006, chain verified.
+                               signer 0xb1358c0bcdb06ffbfc66bb71805eb8bff37dc593b39dd213b790f910b4d38db8
+run with every candidate
+refused:                       shopping, three vetted, done with nothing hired and spent 0. A correct
+                               outcome rather than an error.
+the clean run:                 identical stream up to and including toolOutput, then straight to done.
+                               No injectionCaught, no frozen. The two streams differ only after the
+                               hostile turn, which is E2 step 9 with the surface flipped over its
+                               control endpoint between runs.
+
+suite: 15 tests for the harness, all passing, offline.
+```
+
+### The open question, answered by measurement
+
+E2 asked whether the injection check reuses B1's gate or a separate output check. Neither, in the
+literal form: B1 takes an agent id, not a string, so it cannot be handed a tool result. What the
+harness does instead is run **the engine's own C-01 scanners** on the live output, which are the same
+detectors that decide whether a server fails injection at grading time. One mechanism, applied twice,
+and the test asserts the scanners fire on a payload nothing like E1's while staying quiet on ordinary
+text, so nothing here is tuned to the fixture.
+
+### What still needs the operator
+
+- E1's two route files and a deploy, so the URL is public (`src/demo/README.md`), plus
+  `DEMO_CONTROL_TOKEN` in the Vercel environment.
+- The x402 leg (B3). Until it lands, `paid` events carry `stubbed, the rail is not wired` in the
+  txRef and the receipt subject records `stubbed: true`. The event is never omitted: a stream missing
+  its payment events reads as if payment never happened.
+- The registry read, once D1 and A3b land, replacing the per-candidate stub with the real record.

@@ -5,6 +5,7 @@ import { SubmitForm } from "../components/board/submit-form";
 import { SubmitQr } from "../components/board/submit-qr";
 import { PendingQueue } from "../components/firewall/pending-queue";
 import { UnseenSlot } from "../components/firewall/unseen-slot";
+import { DemoTargetLine } from "../components/floor/demo-target-line";
 import { HiringFloor } from "../components/floor/hiring-floor";
 import { Panel } from "../components/panel";
 import { ReceiptChain } from "../components/receipts/receipt-chain";
@@ -12,6 +13,7 @@ import { PaymentSummary } from "../components/transcript/payment-summary";
 import { TranscriptPanel } from "../components/transcript/transcript-panel";
 import { loadFirewallQueue } from "../lib/firewall";
 import { FLOOR_POLICY, loadFloor } from "../lib/floor";
+import { readDemoTarget } from "../lib/demo-target";
 import { loadReceipts } from "../lib/receipts";
 import { readBoard } from "../lib/registry";
 import { loadTranscript } from "../lib/transcript";
@@ -28,12 +30,13 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function ConsolePage() {
-  const [rows, events, queue, receipts, board] = await Promise.all([
+  const [rows, events, queue, receipts, board, demoTarget] = await Promise.all([
     loadFloor(),
     loadTranscript(),
     loadFirewallQueue(),
     loadReceipts(),
     readBoard(),
+    readDemoTarget(),
   ]);
   return (
     <Container className="py-10 sm:py-12">
@@ -56,6 +59,9 @@ export default async function ConsolePage() {
           title="Hiring floor"
           status={`minimum grade ${FLOOR_POLICY.minGrade}`}
         >
+          <div className="mb-4">
+            <DemoTargetLine target={demoTarget} />
+          </div>
           <HiringFloor rows={rows} />
           <p className="mt-3 max-w-[46rem] text-[0.85rem] leading-snug text-ink/60">
             Each row rechecks the live tool surface at request time and compares it

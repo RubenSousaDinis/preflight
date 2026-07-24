@@ -406,7 +406,21 @@ export type HarnessEvent =
     }
   | { type: 'toolOutput'; at: number; agentId: AgentId; output: JsonValue }
   | { type: 'injectionCaught'; at: number; agentId: AgentId; detail: string; receipt: Receipt }
-  | { type: 'frozen'; at: number; reason: string; spentSoFar: string; receipt: Receipt }
+  /**
+   * `remaining` is carried rather than left to the reader.
+   *
+   * E2's done-when 4 wants the arithmetic visible in the events instead of computed by the UI, and
+   * §12's table names the remaining budget as what this event carries. Appended to the frozen variant
+   * after the fact, by arbitration, alongside the spend it is derived from.
+   */
+  | {
+      type: 'frozen'
+      at: number
+      reason: string
+      spentSoFar: string
+      remaining: string
+      receipt: Receipt
+    }
   | {
       type: 'done'
       at: number
