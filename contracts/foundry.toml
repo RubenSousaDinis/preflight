@@ -19,16 +19,22 @@ evm_version = "cancun"
 optimizer = true
 optimizer_runs = 200
 
-# Strip the metadata hash so a rebuild of the same source produces the same bytecode. The
-# whole product rests on a code fingerprint being reproducible, so the fixtures it is tested
-# against must not change hash because a comment moved.
-bytecode_hash = "none"
+# Keep the metadata hash, which is the default. It was set to "none" while scaffolding, on the
+# reasoning that a stripped build is reproducible. It is, but so is this one: the metadata hash
+# is itself a hash of source and settings, so two builds of unchanged source still match. What
+# "none" costs is explorer verification, which can then only report a partial match, and D3's
+# clean control has to read as verified because that is precisely what the bad callee is not.
+bytecode_hash = "ipfs"
 
 [rpc_endpoints]
 base_sepolia = "${BASE_SEPOLIA_RPC_URL}"
 base_mainnet = "${BASE_MAINNET_RPC_URL}"
 
-# Explorer verification (Etherscan V2, one host for every chain, per 02-DECISIONS 13.2).
-[etherscan]
-base_sepolia = { key = "${BASE_SEPOLIA_EXPLORER_API_KEY}", chain = 84532, url = "https://api.etherscan.io/v2/api" }
-base_mainnet = { key = "${BASE_MAINNET_EXPLORER_API_KEY}", chain = 8453, url = "https://api.etherscan.io/v2/api" }
+# Explorer verification runs through Sourcify, which is the primary source of verified-status per
+# 02-DECISIONS 13.2 and needs no API key:
+#
+#   forge verify-contract <address> src/<Fixture>.sol:<Fixture> --chain 84532 --verifier sourcify
+#
+# There is deliberately no [etherscan] block here. Foundry resolves that section eagerly, so a
+# config naming a key nobody has set makes every verify fail, including the Sourcify ones. If an
+# Etherscan V2 key is ever provisioned, it belongs on the command line rather than back in here.
