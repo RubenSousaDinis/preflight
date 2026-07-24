@@ -64,6 +64,34 @@ The approve was replayed against USDC on each chain (`0x036CbD53...` on Sepolia,
   the fork landed one block apart. `SimulationResult.block` is whatever the fork reports, which is
   the value that goes into `reproducibleFrom`.
 
+## The Vercel question, probed 2026-07-24
+
+anvil cannot run on Vercel's serverless runtime. That does not mean the gate cannot. Both Base
+endpoints turned out to be **reth**, and between them every input the four detectors need is
+reachable over plain HTTP JSON-RPC, which does run on Vercel unchanged.
+
+| Capability the harness needs | Our CDP endpoint | Public `base.org` and `sepolia.base.org` |
+|---|---|---|
+| `debug_traceCall` + `callTracer` with `withLog`, the nested call graph | yes | `rpc method is unsupported` |
+| `debug_traceCall` + `prestateTracer` in diff mode, storage diffs | yes | unsupported |
+| `stateOverrides`, which is the balance injection | yes | yes |
+| `eth_simulateV1`, sequential multi leg with logs | `request denied` | yes, both chains |
+
+The multi leg case was checked properly, not assumed: one `eth_simulateV1` call carrying
+`approve(spender, 1000000)` then `allowance(owner, spender)` returned `0xf4240` from the second
+leg, so leg two observes the state leg one left behind. That is exactly `Fork.run` semantics from
+01-INTERFACES section 7, and it is the mechanism honeypot detection needs.
+
+So an RPC backed implementation of the `Fork` handle is feasible and would deploy to Vercel with no
+binary. Its cost, stated plainly: the capabilities are split across two endpoints, so the call graph
+comes from ours and the multi leg comes from a public one we neither control nor pay for, and
+`eth_simulateV1` returns logs but not the internal call tree.
+
+**This does not reopen open question 3.** anvil stays the mechanism. What it means is that the
+harness is written strictly against the section 7 `Fork` interface, which section 7 requires anyway,
+so the backend is swappable if the deployed site ever has to produce a verdict by itself rather than
+render one produced on the machine driving the run.
+
 ## Toolchain, separately
 
 `contracts/` builds with `solc 0.8.24` under the committed `foundry.toml`, and two clean rebuilds of
