@@ -95,6 +95,7 @@ export const FIXTURE_HARNESS_EVENTS: HarnessEvent[] = [
     at: FIXTURE_RAN_AT + 12,
     reason: 'budget frozen after the hostile turn; one honest call had already been paid',
     spentSoFar: FEE,
+    remaining: String(BigInt(BUDGET) - BigInt(FEE)),
     receipt: FIXTURE_RECEIPT_FROZEN,
   },
   {

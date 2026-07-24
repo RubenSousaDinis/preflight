@@ -299,6 +299,46 @@ export class ReceiptChain {
     return receipt
   }
 
+  /**
+   * Chains a receipt for something that is not a gate verdict: a payment settling, a run freezing.
+   *
+   * The Receipt shape is unchanged, and so is every link and signature rule. What differs is only that
+   * the subject is not one of §4 or §9's shapes, which is why it does not go through `emitReceipt`.
+   */
+  async emitSubject(
+    subject: JsonValue,
+    options: Omit<EmitOptions, 'signer' | 'index'> = {},
+  ): Promise<Receipt> {
+    const index = this.#receipts.length + 1
+    const id = receiptId(index)
+    const responseHash = responseHashOf(subject)
+    const version = methodologyVersion()
+    const evidenceURI = options.evidenceURI ?? null
+    const hash = receiptHash({
+      id,
+      responseHash,
+      evidenceURI,
+      methodologyVersion: version,
+      reproducibleFrom: null,
+      prevHash: this.head,
+      signerPubKey: this.#signer.publicKey,
+    })
+    const receipt: Receipt = {
+      id,
+      subject,
+      responseHash,
+      evidenceURI,
+      methodologyVersion: version,
+      reproducibleFrom: null,
+      prevHash: this.head,
+      hash,
+      sig: this.#signer.sign(hash),
+      signerPubKey: this.#signer.publicKey,
+    }
+    this.#receipts.push(receipt)
+    return receipt
+  }
+
   /** A serializable array, so the console renders the chain directly. */
   all(): Receipt[] {
     return [...this.#receipts]
