@@ -88,8 +88,15 @@ export const ENV = {
   ipfsGateway: 'IPFS_GATEWAY_URL',
 } as const
 
-/** The single IPFS gateway, when none is configured. One choice, stated, so a run is repeatable. */
-export const DEFAULT_IPFS_GATEWAY = 'https://ipfs.io/ipfs/'
+/**
+ * The single IPFS gateway, when none is configured. One choice, stated, so a run is repeatable.
+ *
+ * Measured on 2026-07-24 against a CID pinned elsewhere: `ipfs.io` never answered inside 25s, while
+ * `w3s.link` and `dweb.link` both answered their redirect immediately. A public gateway still cannot
+ * be relied on for content it does not hold, which is why the fetch is bounded: a cold CID ends in a
+ * typed timeout and a refusal, not a hang.
+ */
+export const DEFAULT_IPFS_GATEWAY = 'https://w3s.link/ipfs/'
 
 function env(name: string): string | undefined {
   const value = process.env[name]
