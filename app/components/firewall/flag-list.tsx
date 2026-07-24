@@ -36,8 +36,8 @@ function FlagCard({ flag }: { flag: Flag }) {
           {CONFIRMED_BY_LABEL[flag.confirmedBy]}
         </span>
       </div>
-      <p className="mt-2 text-[0.95rem] leading-snug text-ink">{flag.title}</p>
-      <p className="mt-1 text-[0.88rem] leading-snug text-ink/70">
+      <p className="mt-2 text-[1.05rem] leading-snug text-ink">{flag.title}</p>
+      <p className="mt-1 text-[0.94rem] leading-snug text-ink/70">
         {flag.detail}
       </p>
       {!blocking ? (

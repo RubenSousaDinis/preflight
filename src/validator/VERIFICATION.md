@@ -259,6 +259,50 @@ than returning null. An outage is never reported as an answer.
 
 Still blocked on you: A4's registry address and chain id, and which wallet owns the demo agents.
 
+## A3b step 7 and 10, integrated against the live A4 registry
+
+The TODO-INTEGRATE seam is closed. Run 2026-07-25 against the real contract, not a fixture.
+
+```
+registry:            0xc0274d5a902c1d03c7f428f0722127868b187393, chain 84532
+getIdentityRegistry: 0x8004A818BFB912233c491871b3d84c89A494BD9e, the live Sepolia identity registry
+configured validator: 0xCFad8f21B8469790ADc3922814d1df4E08ECF1c8
+
+readValidation("8427") returned the smoke record, all fields from chain state:
+  score        100
+  tag          "litmus-smoke"   (a throwaway; real records read the tag from the installed package)
+  responseHash 0x09f75be291682e71e350b6ec50b93a7f12b2b52a10846d08fbecd750071b4f16
+  validator    0xCFad8f21B8469790ADc3922814d1df4E08ECF1c8
+  lastUpdate   1784932088, so the derived expiresAt is 1785018488, in the future
+  requestHash  0xf494d18267bb95792e4fe3e771f6c53ca442e6c3e74966210c4d9af325bc3627
+  txHash       0x3dfae8f6e6de531ce9b7f2886bbb8357bde6bcfe6a98883ffe9da4a6bf3c7f0c
+  responseURI  data:application/json,{"evidence":"a4-smoke"}
+
+check 4, the validator filter, both directions:
+  read-validation 8427                          -> the record above
+  read-validation 8427 --validator 0x2222…2222  -> null, "no usable record from this validator"
+  read-validation 9999                          -> null, no record for an agent with none
+```
+
+Two findings from the integration, both fixed rather than noted:
+
+1. **The configured endpoint caps `eth_getLogs`.** A 1000 block window answered; 10000 blocks and
+   `fromBlock: "earliest"` both came back "Requested resource not available". The evidence URI lives in
+   the `ValidationResponse` event, so the reader now walks backwards from the head in 900 block chunks
+   and stops at the first hit, with an optional `VALIDATION_REGISTRY_DEPLOY_BLOCK` to floor the walk. A
+   record written minutes ago is found in the first call. Not finding one returns null and refuses
+   downstream as unreachable evidence; an RPC that fails mid-search throws, because that is an outage
+   rather than an answer.
+2. **`txHash` now means the transaction.** The storage read returns no transaction, only the
+   requestHash, so before this the field carried the requestHash. The event carries
+   `transactionHash`, and the reader is already reading that event for the URI, so both now come from
+   it and the requestHash is reported alongside rather than in its place.
+
+The mismatch path also demonstrated itself on real onchain data: verifying the smoke record's
+`data:` evidence against its own `responseHash` returned **MISMATCH** with the recomputed
+`0x6914e915…1ecd`. The record's document and its hash genuinely do not correspond, which is exactly
+what a reader should say about them.
+
 ### Open, for the operator
 
 - `VALIDATOR_ADDRESS` is not set anywhere yet. Needed before B1 reads a record.

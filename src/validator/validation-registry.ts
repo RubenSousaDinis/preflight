@@ -36,7 +36,14 @@ import {
 import { privateKeyToAccount } from 'viem/accounts'
 
 import { ConfigError, PublishError, ValidationReadError } from '../shared/errors.ts'
-import { ENV, requireEnv, rpcUrlFor, validationRegistry, validatorAddress } from '../shared/config.ts'
+import {
+  ENV,
+  optionalEnv,
+  requireEnv,
+  rpcUrlFor,
+  validationRegistry,
+  validatorAddress,
+} from '../shared/config.ts'
 import { gradeForScore } from '../shared/grade.ts'
 import type { Address, AgentId, GradeResult, Hex, Score, ValidationRecord } from '../shared/types.ts'
 import { canonicalizeValue } from './canonical.ts'
@@ -290,63 +297,127 @@ export async function readValidation(
   }
 }
 
+const VALIDATION_RESPONSE_EVENT = {
+  type: 'event',
+  name: 'ValidationResponse',
+  inputs: [
+    { name: 'validatorAddress', type: 'address', indexed: true },
+    { name: 'agentId', type: 'uint256', indexed: true },
+    { name: 'requestHash', type: 'bytes32', indexed: true },
+    { name: 'response', type: 'uint8', indexed: false },
+    { name: 'responseURI', type: 'string', indexed: false },
+    { name: 'responseHash', type: 'bytes32', indexed: false },
+    { name: 'tag', type: 'string', indexed: false },
+  ],
+} as const
+
+/**
+ * How wide a single `eth_getLogs` window may be.
+ *
+ * Measured against the configured Base Sepolia endpoint on 2026-07-25: a 1000 block window answered, a
+ * 10000 block window and `fromBlock: 'earliest'` both came back "Requested resource not available".
+ * So the search is chunked, and this stays under the observed cap with margin.
+ */
+export const LOG_CHUNK_BLOCKS = 900n
+
+/** About two days of Base blocks, which is longer than the event and bounded. */
+export const DEFAULT_LOG_LOOKBACK_BLOCKS = 90_000n
+
 /**
  * The responseURI is emitted in the event rather than stored, so it is read from the log.
  *
- * Without it a reader has the hash but not the document, and "re-derive the hash from the published
- * evidence" stops being possible. Absence is not fatal to the verdict, but it is fatal to checking it,
- * so a record with no retrievable URI reaches B1 as an empty string and refuses there.
+ * Without it a reader holds the hash but not the document, and "re-derive the hash from the published
+ * evidence" stops being possible. Not finding it is not an error: it returns null, reaches B1 as an
+ * empty URI, and refuses there as unreachable evidence. An RPC that fails mid-search does throw, since
+ * that is an outage rather than an answer.
+ *
+ * The search walks backwards from the head so a record written minutes ago is found in the first call.
  */
-export async function readResponseURI(
+export interface ResponseEvent {
+  responseURI: string
+  /** The transaction that wrote the record, which is what §3's `txHash` means. */
+  txHash: Hex
+}
+
+export async function readResponseEvent(
   requestHash: Hex,
-  options: ReadOptions = {},
-): Promise<string | null> {
+  options: ReadOptions & { lookbackBlocks?: bigint } = {},
+): Promise<ResponseEvent | null> {
   const registryConfig = options.registry === undefined ? validationRegistry() : null
   const registry = getAddress(options.registry ?? registryConfig!.address)
   const chainId = options.chainId ?? registryConfig!.chainId
   const client = publicClientFor(chainId, options.client)
 
+  let head: bigint
   try {
-    const logs = await client.getLogs({
-      address: registry,
-      event: {
-        type: 'event',
-        name: 'ValidationResponse',
-        inputs: [
-          { name: 'validatorAddress', type: 'address', indexed: true },
-          { name: 'agentId', type: 'uint256', indexed: true },
-          { name: 'requestHash', type: 'bytes32', indexed: true },
-          { name: 'response', type: 'uint8', indexed: false },
-          { name: 'responseURI', type: 'string', indexed: false },
-          { name: 'responseHash', type: 'bytes32', indexed: false },
-          { name: 'tag', type: 'string', indexed: false },
-        ],
-      },
-      args: { requestHash },
-      fromBlock: 'earliest',
-      toBlock: 'latest',
-    })
-    const last = logs.at(-1)
-    const uri = (last?.args as { responseURI?: string } | undefined)?.responseURI
-    return typeof uri === 'string' && uri.length > 0 ? uri : null
+    head = await client.getBlockNumber()
   } catch (err) {
-    throw new ValidationReadError(`could not read the response URI for ${requestHash}`, {
+    throw new ValidationReadError(`could not read the head block on chain ${chainId}`, {
       retryable: true,
       cause: err,
     })
   }
+
+  const configuredFloor = optionalEnv(ENV.validationRegistryDeployBlock)
+  const lookback = options.lookbackBlocks ?? DEFAULT_LOG_LOOKBACK_BLOCKS
+  const floor =
+    configuredFloor === undefined
+      ? head > lookback
+        ? head - lookback
+        : 0n
+      : BigInt(configuredFloor)
+
+  let toBlock = head
+  while (toBlock >= floor) {
+    const fromBlock = toBlock > floor + LOG_CHUNK_BLOCKS ? toBlock - LOG_CHUNK_BLOCKS : floor
+    let logs
+    try {
+      logs = await client.getLogs({
+        address: registry,
+        event: VALIDATION_RESPONSE_EVENT,
+        args: { requestHash },
+        fromBlock,
+        toBlock,
+      })
+    } catch (err) {
+      throw new ValidationReadError(
+        `could not read the response URI for ${requestHash} between blocks ${fromBlock} and ${toBlock}`,
+        { retryable: true, cause: err },
+      )
+    }
+    const last = logs.at(-1)
+    const uri = (last?.args as { responseURI?: string } | undefined)?.responseURI
+    if (last !== undefined && typeof uri === 'string' && uri.length > 0) {
+      return { responseURI: uri, txHash: last.transactionHash as Hex }
+    }
+    if (fromBlock === floor) break
+    toBlock = fromBlock - 1n
+  }
+  return null
 }
 
-/** Reads a record and fills in the evidence URI from the event log. */
+/**
+ * Reads a record and fills in the evidence URI and the attesting transaction from the event log.
+ *
+ * Until the log is read, `txHash` carries the requestHash, because that is the only identifier the
+ * storage read returns. The event is where the transaction actually is, so this is the call that makes
+ * §3's `txHash` mean what it says.
+ */
 export async function readValidationWithEvidence(
   agentId: AgentId,
   validator?: Address,
   options: ReadOptions = {},
-): Promise<ValidationRecord | null> {
+): Promise<(ValidationRecord & { requestHash: Hex }) | null> {
   const record = await readValidation(agentId, validator, options)
   if (record === null) return null
-  const uri = await readResponseURI(record.txHash, options)
-  return { ...record, responseURI: uri ?? '' }
+  const requestHash = record.txHash
+  const event = await readResponseEvent(requestHash, options)
+  return {
+    ...record,
+    requestHash,
+    responseURI: event?.responseURI ?? '',
+    txHash: event?.txHash ?? requestHash,
+  }
 }
 
 export interface PublishOptions extends ReadOptions {

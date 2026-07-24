@@ -52,7 +52,7 @@ export default async function ConsolePage() {
           status={`minimum grade ${FLOOR_POLICY.minGrade}`}
         >
           <HiringFloor rows={rows} />
-          <p className="mt-3 font-data text-[0.72rem] text-ink/55">
+          <p className="mt-3 max-w-[46rem] text-[0.85rem] leading-snug text-ink/60">
             Each row rechecks the live tool surface at request time and compares it
             to the surface that was graded. Drift outranks the letter.
           </p>
@@ -61,7 +61,7 @@ export default async function ConsolePage() {
             in the footer. This is where the grade claim is made, so it is where
             the limit of that claim has to be readable.
           */}
-          <p className="mt-2 max-w-[46rem] text-[0.82rem] leading-snug text-ink/60">
+          <p className="mt-2 max-w-[46rem] text-[0.85rem] leading-snug text-ink/60">
             A letter describes what the target did while it was being tested. A
             target that detects the test context and behaves during it can still
             act differently afterwards, which is the limit the run below
@@ -76,7 +76,7 @@ export default async function ConsolePage() {
           status={`${events.length} events`}
         >
           <TranscriptPanel events={events} />
-          <p className="mt-3 max-w-[46rem] text-[0.82rem] leading-snug text-ink/60">
+          <p className="mt-3 max-w-[46rem] text-[0.85rem] leading-snug text-ink/60">
             The agent that turns hostile here passed the gate on its letter and on
             its live fingerprint, both. Its hostile turn fires on a condition that
             was not present at grading time, so what stops it is the boundary

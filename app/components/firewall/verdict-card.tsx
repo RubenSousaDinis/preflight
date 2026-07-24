@@ -15,7 +15,7 @@ function VerdictBadge({ verdict }: { verdict: VerdictView["verdict"] }) {
   const blocked = verdict === "BLOCK";
   return (
     <span
-      className={`inline-block border-2 px-3 py-1.5 font-data text-[1rem] tracking-[0.12em] ${
+      className={`inline-block border-2 px-3 py-1.5 font-data text-[1.1rem] tracking-[0.12em] ${
         blocked ? "border-grade-f text-grade-f" : "border-accent text-accent"
       }`}
     >
@@ -109,7 +109,7 @@ export function VerdictCard({ verdict }: { verdict: VerdictView }) {
       <div className="flex flex-wrap items-start gap-4">
         <VerdictBadge verdict={verdict.verdict} />
         <div className="min-w-0 flex-1">
-          <p className="text-[1rem] leading-snug text-ink">{verdict.reason}</p>
+          <p className="text-[1.15rem] leading-snug text-ink">{verdict.reason}</p>
           {/*
             The disclosed state-level limit sits next to the verdict, which is
             exactly where the overclaim would otherwise be read.
