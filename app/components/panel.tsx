@@ -11,15 +11,21 @@ export function Panel({
   status,
   children,
   className = "",
+  id,
 }: {
   title: string;
   eyebrow?: string;
   status?: ReactNode;
   children: ReactNode;
   className?: string;
+  /** Anchor target, so the stage can jump straight to a beat. */
+  id?: string;
 }) {
   return (
-    <section className={`border border-rule bg-panel ${className}`}>
+    <section
+      id={id}
+      className={`scroll-mt-16 border border-rule bg-panel ${className}`}
+    >
       <header className="flex items-baseline justify-between gap-4 border-b border-rule px-4 py-3 sm:px-5">
         <div className="min-w-0">
           {eyebrow ? (

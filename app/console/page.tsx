@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ConsoleNav } from "../components/console-nav";
 import { Container } from "../components/container";
 import { Leaderboard } from "../components/board/leaderboard";
 import { SubmitForm } from "../components/board/submit-form";
@@ -52,8 +53,11 @@ export default async function ConsolePage() {
         </p>
       </header>
 
-      <div className="mt-8 grid gap-4">
+      <ConsoleNav />
+
+      <div className="mt-6 grid gap-4">
         <Panel
+          id="beat-1"
           eyebrow="beat 1"
           title="Hiring floor"
           status={`minimum grade ${FLOOR_POLICY.minGrade}`}
@@ -81,6 +85,7 @@ export default async function ConsolePage() {
         </Panel>
 
         <Panel
+          id="beat-1-run"
           eyebrow="beat 1"
           title="Run transcript"
           status="driven live"
@@ -98,6 +103,7 @@ export default async function ConsolePage() {
         </Panel>
 
         <Panel
+          id="beat-2"
           eyebrow="beat 2"
           title="Firewall"
           status={`${queue.length} checked`}
@@ -109,6 +115,7 @@ export default async function ConsolePage() {
         </Panel>
 
         <Panel
+          id="beat-3"
           eyebrow="beat 3"
           title="Graded onchain"
           status={`${board.entries.length} listed`}
@@ -133,10 +140,18 @@ export default async function ConsolePage() {
         </Panel>
 
         <Panel
+          id="audit-trail"
           eyebrow="audit trail"
-          title="Receipts"
+          title="Receipts, the reference chain"
           status={`${receipts.receipts.length} in the chain`}
         >
+          <p className="mb-3 max-w-[46rem] text-[0.9rem] leading-snug text-ink/70">
+            The receipts a run produces are shown with that run, under beat 1.
+            This chain is the fixture set, kept here because the verifier rejects
+            it and a screen that can only ever agree is not worth putting a
+            verifier behind. Compare the two: same panel, same verifier, opposite
+            answers.
+          </p>
           <ReceiptChain log={receipts} />
         </Panel>
       </div>
