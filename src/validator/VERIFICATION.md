@@ -181,6 +181,84 @@ So if D1's demo agents declare https endpoints (E1 on a deploy URL), the hired a
 Recommendation: option 1. It is free, it is true, and the disclosed-limits framing is the project's
 own thesis rather than a concession.
 
+## A3b prep, the [claude] steps, ready ahead of the operator slot
+
+Steps 4, 7 and 10 are done, plus the publish path from commit point 1. Steps 2, 5, 6, 8 and 9 need the
+key and are prepared to copy-paste level below.
+
+### What the reference contract actually does, and the three things that differ from the plan
+
+Read from `erc-8004/erc-8004-contracts@master/contracts/ValidationRegistryUpgradeable.sol`, which is
+the contract A4 deploys. Each of these changes behavior, so none is a footnote:
+
+1. **There is no expiry onchain.** `validationResponse(bytes32 requestHash, uint8 response, string
+   responseURI, bytes32 responseHash, string tag)` takes no `expirationTime`, and `ValidationStatus`
+   holds no expiry field, only `lastUpdate`. `01-INTERFACES` §3 and A3b's invariant both assume one,
+   which is an EAS property, not an ERC-8004 one. `expiresAt` is therefore derived as
+   `lastUpdate + 86400` and enforced by the reader, so an expired record is still treated as absent.
+   **This is an interface-semantics change and it needs your call**: the frozen field keeps its name
+   and type, and what moves is where the bound lives. The UI must say the expiry is enforced by the
+   reader rather than implying the chain carries it.
+2. **Publishing is two transactions, and the first is permissioned.** `validationResponse` reverts with
+   "unknown" unless the `requestHash` already exists, and `validationRequest` may only be sent by
+   `ownerOf(agentId)` or an approved operator in the IdentityRegistry. So leg 1 is sent by whoever owns
+   the demo agents and leg 2 by the validator. If D1 registers the agents from the validator wallet,
+   one key does both; if not, leg 1 needs the owner's key and the runbook needs two signers.
+3. **`getValidationStatus` reverts for an unknown hash** and does not return `hasResponse`. A request
+   with no response reads back as `response: 0` with a zero `responseHash`, and `response: 0` is also a
+   legitimate grade F. Presence is therefore decided by the responseHash. A reader that tested the
+   score would treat every F as an absent record, which is the quietest possible way to lose the F row
+   of beat 1.
+
+**The trap worth naming before A4 runs:** the ValidationRegistry is initialized against one
+IdentityRegistry, and leg 1 calls `ownerOf(agentId)` on it. The agents and the registry have to be on
+the same chain. If A4 deploys to Base Sepolia while D1 registers on Base mainnet, every publish
+reverts on a line that looks unrelated.
+
+### The 0G Storage path, verified for real
+
+```
+provider:      0G Storage, @0gfoundation/0g-storage-ts-sdk 1.2.10, uploaded from memory
+0G chain:      chainId 16602, storage fee paid 122934579848 wei
+upload tx:     0x52f967cde67bb08be6554c38aba41f2ee24fc80a40e384f07212790ddb5bb2d6
+merkle root:   0x64dacb7e6cc40898dc7f0e561ff4b6a620edb0c2ac024982179afa6846059521
+retrieval uri: https://indexer-storage-testnet-turbo.0g.ai/file?root=0x64dacb7e…9521
+bundle:        961 bytes of canonical evidence, keccak256
+               0xaea2b7758fd871ea27bae33e02a678cd5682f43f66a0cc2db277d15006c29972
+third-party
+re-derivation: MATCHES. Fetched back over HTTP, reparsed, re-canonicalized, re-hashed to the same
+               value. That is A3b check 3, on the real provider, before the slot.
+```
+
+The bytes uploaded are the bytes that were canonicalized: the hash and the upload read the same string,
+computed once. The data-URI degrade is implemented and tested alongside it, so a provider outage costs
+the content-addressed property and nothing else.
+
+### The commands for your slot
+
+```
+# step 4 and 5, nothing sent: grade, publish the evidence, print both legs' exact arguments
+node --env-file-if-exists=.env.local src/validator/cli.ts publish <agentId> --pin zerog
+
+# step 6 and 9, signs leg 1 and leg 2, then confirms by reading the record back
+node --env-file-if-exists=.env.local src/validator/cli.ts publish <agentId> --pin zerog --send
+
+# add --request-exists if leg 1 already landed and only the response needs re-sending
+
+# step 8, an independent path: fetch the published evidence and re-derive its hash
+node --env-file-if-exists=.env.local src/validator/cli.ts verify-evidence <uri> <responseHash>
+
+# check 4, the validator filter, from the read side
+node --env-file-if-exists=.env.local src/validator/cli.ts read-validation <agentId>
+node --env-file-if-exists=.env.local src/validator/cli.ts read-validation <agentId> --validator 0x…other
+```
+
+Confirmed already: with `VALIDATION_REGISTRY_ADDRESS` unset, `read-validation` refuses with
+"VALIDATION_REGISTRY_ADDRESS is not set, so reading or writing a validation record cannot run" rather
+than returning null. An outage is never reported as an answer.
+
+Still blocked on you: A4's registry address and chain id, and which wallet owns the demo agents.
+
 ### Open, for the operator
 
 - `VALIDATOR_ADDRESS` is not set anywhere yet. Needed before B1 reads a record.
