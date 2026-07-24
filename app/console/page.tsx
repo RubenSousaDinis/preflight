@@ -3,7 +3,9 @@ import { Container } from "../components/container";
 import { HiringFloor } from "../components/floor/hiring-floor";
 import { Panel } from "../components/panel";
 import { EmptyState } from "../components/states";
+import { TranscriptPanel } from "../components/transcript/transcript-panel";
 import { FLOOR_POLICY, loadFloor } from "../lib/floor";
+import { loadTranscript } from "../lib/transcript";
 
 export const metadata: Metadata = {
   title: "Console",
@@ -17,7 +19,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function ConsolePage() {
-  const rows = await loadFloor();
+  const [rows, events] = await Promise.all([loadFloor(), loadTranscript()]);
   return (
     <Container className="py-10 sm:py-12">
       <header className="max-w-[46rem]">
@@ -44,6 +46,14 @@ export default async function ConsolePage() {
             Each row rechecks the live tool surface at request time and compares it
             to the surface that was graded. Drift outranks the letter.
           </p>
+        </Panel>
+
+        <Panel
+          eyebrow="beat 1"
+          title="Run transcript"
+          status={`${events.length} events`}
+        >
+          <TranscriptPanel events={events} />
         </Panel>
 
         {/* TODO-INTEGRATE: C3 mounts the firewall panel here, against Lane 2's txGuard (01-INTERFACES section 9). */}
