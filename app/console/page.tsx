@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
 import { Container } from "../components/container";
+import { Leaderboard } from "../components/board/leaderboard";
+import { SubmitForm } from "../components/board/submit-form";
+import { SubmitQr } from "../components/board/submit-qr";
 import { PendingQueue } from "../components/firewall/pending-queue";
 import { UnseenSlot } from "../components/firewall/unseen-slot";
 import { HiringFloor } from "../components/floor/hiring-floor";
@@ -10,6 +13,7 @@ import { TranscriptPanel } from "../components/transcript/transcript-panel";
 import { loadFirewallQueue } from "../lib/firewall";
 import { FLOOR_POLICY, loadFloor } from "../lib/floor";
 import { loadReceipts } from "../lib/receipts";
+import { readBoard } from "../lib/registry";
 import { loadTranscript } from "../lib/transcript";
 
 export const metadata: Metadata = {
@@ -24,11 +28,12 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function ConsolePage() {
-  const [rows, events, queue, receipts] = await Promise.all([
+  const [rows, events, queue, receipts, board] = await Promise.all([
     loadFloor(),
     loadTranscript(),
     loadFirewallQueue(),
     loadReceipts(),
+    readBoard(),
   ]);
   return (
     <Container className="py-10 sm:py-12">
@@ -96,6 +101,30 @@ export default async function ConsolePage() {
           <PendingQueue items={queue} />
           <div className="mt-4">
             <UnseenSlot />
+          </div>
+        </Panel>
+
+        <Panel
+          eyebrow="beat 3"
+          title="Graded onchain"
+          status={`${board.entries.length} listed`}
+        >
+          <Leaderboard board={board} />
+          <div className="mt-6 grid gap-6 md:grid-cols-[minmax(0,1fr)_15rem] md:items-start">
+            <div>
+              <h3 className="font-display text-[1.1rem] font-semibold">
+                Submit an agent
+              </h3>
+              <p className="mt-1 max-w-[40rem] text-[0.9rem] leading-snug text-ink/70">
+                Any agent in the room can be graded here. The grade that comes
+                back is the one the board lists, produced by the same engine, and
+                nobody pays for it.
+              </p>
+              <div className="mt-4">
+                <SubmitForm />
+              </div>
+            </div>
+            <SubmitQr />
           </div>
         </Panel>
 
