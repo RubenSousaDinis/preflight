@@ -1,0 +1,179 @@
+/**
+ * The per-chain configuration surface, read from the environment.
+ *
+ * Config is per chain from the first commit (A1's invariant): txGuard is chainId-parameterized per
+ * 02-DECISIONS §3, so there is no default network and no default RPC anywhere in this file. A
+ * missing value throws `ConfigError` rather than falling back, because a gate that silently reads
+ * the wrong chain produces a verdict about a contract that is not the one under test.
+ *
+ * Server side only. Nothing here is exported to the browser.
+ */
+
+import { ConfigError } from './errors.ts'
+import type { Address, ChainId } from './types.ts'
+
+export type ChainKey = 'base-mainnet' | 'base-sepolia' | 'hedera-testnet'
+
+export interface ChainConfig {
+  key: ChainKey
+  chainId: ChainId
+  label: string
+  /** Environment variable holding the RPC URL. There is no default endpoint. */
+  rpcEnv: string
+  /** Environment variable holding the explorer API key, where one applies. */
+  explorerKeyEnv: string | null
+  /**
+   * ERC-8004 IdentityRegistry, from 02-DECISIONS §4. Deployed by the standard's authors at the same
+   * address across 40+ chains. Normalize with `getAddress` at the call boundary before use.
+   */
+  identityRegistry: Address | null
+  /** What this chain is for, so a misconfiguration reads as a sentence rather than a variable name. */
+  role: string
+}
+
+export const CHAINS: Record<ChainKey, ChainConfig> = {
+  'base-mainnet': {
+    key: 'base-mainnet',
+    chainId: 8453,
+    label: 'Base mainnet',
+    rpcEnv: 'BASE_MAINNET_RPC_URL',
+    explorerKeyEnv: 'BASE_MAINNET_EXPLORER_API_KEY',
+    identityRegistry: '0x8004A169FB4a3325136EB29fA0ceB6D2e539a432',
+    role: 'validator attestations, and the unseen-run fork',
+  },
+  'base-sepolia': {
+    key: 'base-sepolia',
+    chainId: 84532,
+    label: 'Base Sepolia',
+    rpcEnv: 'BASE_SEPOLIA_RPC_URL',
+    explorerKeyEnv: 'BASE_SEPOLIA_EXPLORER_API_KEY',
+    identityRegistry: '0x8004A818BFB912233c491871b3d84c89A494BD9e',
+    role: 'staged fixtures, and the staged fork',
+  },
+  'hedera-testnet': {
+    key: 'hedera-testnet',
+    chainId: 296,
+    label: 'Hedera Testnet',
+    rpcEnv: 'HEDERA_TESTNET_RPC_URL',
+    explorerKeyEnv: null,
+    identityRegistry: null,
+    role: 'the x402 payment rail, never an input to a verdict',
+  },
+}
+
+export const CHAIN_KEYS: readonly ChainKey[] = ['base-mainnet', 'base-sepolia', 'hedera-testnet']
+
+/** Every environment variable this project reads, in one place. */
+export const ENV = {
+  baseMainnetRpc: 'BASE_MAINNET_RPC_URL',
+  baseMainnetExplorerKey: 'BASE_MAINNET_EXPLORER_API_KEY',
+  baseSepoliaRpc: 'BASE_SEPOLIA_RPC_URL',
+  baseSepoliaExplorerKey: 'BASE_SEPOLIA_EXPLORER_API_KEY',
+  hederaRpc: 'HEDERA_TESTNET_RPC_URL',
+  hederaAccountId: 'HEDERA_TESTNET_ACCOUNT_ID',
+  hederaPrivateKey: 'HEDERA_TESTNET_PRIVATE_KEY',
+  zerogStorageKey: 'ZEROG_STORAGE_PRIVATE_KEY',
+  zerogComputeKey: 'ZEROG_COMPUTE_ROUTER_API_KEY',
+  /** Ruben-only custody. Present only where a signature is produced. */
+  validatorPrivateKey: 'VALIDATOR_PRIVATE_KEY',
+  /**
+   * The validator's public address. Read paths need it without the key: B1 must reject a record
+   * written by any other validator, and it does that in the browser-facing read path.
+   */
+  validatorAddress: 'VALIDATOR_ADDRESS',
+  /** A4's deploy output. Absent until A4 lands; every read of it fails closed until then. */
+  validationRegistryAddress: 'VALIDATION_REGISTRY_ADDRESS',
+  validationRegistryChainId: 'VALIDATION_REGISTRY_CHAIN_ID',
+  /** One configured gateway, never a gateway race: a race is not reproducible. */
+  ipfsGateway: 'IPFS_GATEWAY_URL',
+} as const
+
+/** The single IPFS gateway, when none is configured. One choice, stated, so a run is repeatable. */
+export const DEFAULT_IPFS_GATEWAY = 'https://ipfs.io/ipfs/'
+
+function env(name: string): string | undefined {
+  const value = process.env[name]
+  if (value === undefined) return undefined
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : undefined
+}
+
+/** Reads a required value or throws. The throw is the point: there is no default. */
+export function requireEnv(name: string, why: string): string {
+  const value = env(name)
+  if (value === undefined) {
+    throw new ConfigError(`${name} is not set, so ${why} cannot run`)
+  }
+  return value
+}
+
+export function optionalEnv(name: string): string | undefined {
+  return env(name)
+}
+
+export function chainByKey(key: ChainKey): ChainConfig {
+  return CHAINS[key]
+}
+
+export function chainById(chainId: ChainId): ChainConfig {
+  for (const key of CHAIN_KEYS) {
+    if (CHAINS[key].chainId === chainId) return CHAINS[key]
+  }
+  throw new ConfigError(
+    `chain ${chainId} is not configured; this project talks to ${CHAIN_KEYS.map((k) => `${CHAINS[k].label} (${CHAINS[k].chainId})`).join(', ')}`,
+  )
+}
+
+export function rpcUrlFor(chainId: ChainId): string {
+  const chain = chainById(chainId)
+  return requireEnv(chain.rpcEnv, `an RPC call on ${chain.label}`)
+}
+
+export function explorerKeyFor(chainId: ChainId): string {
+  const chain = chainById(chainId)
+  if (chain.explorerKeyEnv === null) {
+    throw new ConfigError(`${chain.label} has no explorer key configured for this project`)
+  }
+  return requireEnv(chain.explorerKeyEnv, `an explorer lookup on ${chain.label}`)
+}
+
+export function identityRegistryFor(chainId: ChainId): Address {
+  const chain = chainById(chainId)
+  if (chain.identityRegistry === null) {
+    throw new ConfigError(`no ERC-8004 IdentityRegistry is recorded for ${chain.label}`)
+  }
+  return chain.identityRegistry
+}
+
+export function ipfsGateway(): string {
+  return optionalEnv(ENV.ipfsGateway) ?? DEFAULT_IPFS_GATEWAY
+}
+
+/** Where the Validation Registry lives, once A4 has deployed it. Both halves or neither. */
+export function validationRegistry(): { address: Address; chainId: ChainId } {
+  const address = requireEnv(ENV.validationRegistryAddress, 'reading or writing a validation record')
+  const rawChainId = requireEnv(
+    ENV.validationRegistryChainId,
+    'reading or writing a validation record',
+  )
+  const chainId = Number(rawChainId)
+  if (!Number.isInteger(chainId)) {
+    throw new ConfigError(`${ENV.validationRegistryChainId} is not an integer chain id`)
+  }
+  if (!address.startsWith('0x')) {
+    throw new ConfigError(`${ENV.validationRegistryAddress} is not a 0x address`)
+  }
+  return { address: address as Address, chainId }
+}
+
+/**
+ * The validator this deployment trusts. A record from any other validator is ignored, not trusted,
+ * so the read path needs this and refuses without it.
+ */
+export function validatorAddress(): Address {
+  const address = requireEnv(ENV.validatorAddress, 'checking who signed a validation record')
+  if (!address.startsWith('0x')) {
+    throw new ConfigError(`${ENV.validatorAddress} is not a 0x address`)
+  }
+  return address as Address
+}
