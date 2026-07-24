@@ -8,11 +8,9 @@ import {
   chainById,
   ENV,
   identityRegistryFor,
-  ipfsGateway,
   requireEnv,
   rpcUrlFor,
   validationRegistry,
-  DEFAULT_IPFS_GATEWAY,
 } from './config.ts'
 import { doctor } from './doctor.ts'
 import {
@@ -145,15 +143,6 @@ test('the validation registry needs both halves or it fails closed', () => {
       assert.deepEqual(validationRegistry(), { address: '0xdead', chainId: 84532 })
     },
   )
-})
-
-test('the ipfs gateway is one configured value with a stated default, never a race', () => {
-  withEnv({ [ENV.ipfsGateway]: undefined }, () => {
-    assert.equal(ipfsGateway(), DEFAULT_IPFS_GATEWAY)
-  })
-  withEnv({ [ENV.ipfsGateway]: 'https://gateway.example/ipfs/' }, () => {
-    assert.equal(ipfsGateway(), 'https://gateway.example/ipfs/')
-  })
 })
 
 test('requireEnv names the variable and what it blocks', () => {

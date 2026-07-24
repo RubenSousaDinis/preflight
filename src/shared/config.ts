@@ -74,6 +74,9 @@ export const ENV = {
   hederaPrivateKey: 'HEDERA_TESTNET_PRIVATE_KEY',
   zerogStorageKey: 'ZEROG_STORAGE_PRIVATE_KEY',
   zerogComputeKey: 'ZEROG_COMPUTE_ROUTER_API_KEY',
+  /** 0G Storage is where evidence is pinned (02-DECISIONS §12). Both halves are needed to upload. */
+  zerogRpc: 'ZEROG_RPC_URL',
+  zerogIndexer: 'ZEROG_INDEXER_URL',
   /** Ruben-only custody. Present only where a signature is produced. */
   validatorPrivateKey: 'VALIDATOR_PRIVATE_KEY',
   /**
@@ -84,12 +87,7 @@ export const ENV = {
   /** A4's deploy output. Absent until A4 lands; every read of it fails closed until then. */
   validationRegistryAddress: 'VALIDATION_REGISTRY_ADDRESS',
   validationRegistryChainId: 'VALIDATION_REGISTRY_CHAIN_ID',
-  /** One configured gateway, never a gateway race: a race is not reproducible. */
-  ipfsGateway: 'IPFS_GATEWAY_URL',
 } as const
-
-/** The single IPFS gateway, when none is configured. One choice, stated, so a run is repeatable. */
-export const DEFAULT_IPFS_GATEWAY = 'https://ipfs.io/ipfs/'
 
 function env(name: string): string | undefined {
   const value = process.env[name]
@@ -143,10 +141,6 @@ export function identityRegistryFor(chainId: ChainId): Address {
     throw new ConfigError(`no ERC-8004 IdentityRegistry is recorded for ${chain.label}`)
   }
   return chain.identityRegistry
-}
-
-export function ipfsGateway(): string {
-  return optionalEnv(ENV.ipfsGateway) ?? DEFAULT_IPFS_GATEWAY
 }
 
 /** Where the Validation Registry lives, once A4 has deployed it. Both halves or neither. */
