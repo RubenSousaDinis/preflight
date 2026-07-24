@@ -26,6 +26,15 @@ const known = new Map<string, boolean>()
 
 export interface VerifiedStatus {
   verified: boolean
+  /**
+   * Did the explorer actually answer?
+   *
+   * `false` means the lookup failed rather than that the address is unverified, and the two callers
+   * fail closed differently on it. B5b treats an unanswered spender as unknown and flags, since an
+   * unknown spender is exactly its finding. B5d throws, so txGuard blocks structurally, because a
+   * callee it could not classify is not a callee it may pass.
+   */
+  determinate: boolean
   /** What the lookup actually saw, for the flag detail and for the evidence. */
   note: string
 }
@@ -38,7 +47,11 @@ export async function verifiedSource(chainId: ChainId, address: Address): Promis
   const key = `${chainId}:${getAddress(address)}`
   const cached = known.get(key)
   if (cached !== undefined) {
-    return { verified: cached, note: cached ? 'source verified' : 'source not verified' }
+    return {
+      verified: cached,
+      determinate: true,
+      note: cached ? 'source verified' : 'source not verified',
+    }
   }
 
   try {
@@ -49,10 +62,14 @@ export async function verifiedSource(chainId: ChainId, address: Address): Promis
 
     if (response.status === 404) {
       known.set(key, false)
-      return { verified: false, note: 'source not verified' }
+      return { verified: false, determinate: true, note: 'source not verified' }
     }
     if (!response.ok) {
-      return { verified: false, note: `source status unavailable, explorer answered ${response.status}` }
+      return {
+        verified: false,
+        determinate: false,
+        note: `source status unavailable, explorer answered ${response.status}`,
+      }
     }
 
     const body = (await response.json()) as { match?: string | null }
@@ -60,11 +77,16 @@ export async function verifiedSource(chainId: ChainId, address: Address): Promis
     known.set(key, verified)
     return {
       verified,
+      determinate: true,
       note: verified ? `source verified, ${body.match}` : 'source not verified',
     }
   } catch {
-    // Unreachable or too slow. Unverified is the answer that blocks, so this is the direction a
-    // failure has to fall.
-    return { verified: false, note: 'source status unavailable, treating as not verified' }
+    // Unreachable or too slow. Not verified is the answer that blocks, so that is the direction a
+    // failure falls, and `determinate: false` lets a caller that must throw tell the two apart.
+    return {
+      verified: false,
+      determinate: false,
+      note: 'source status unavailable, treating as not verified',
+    }
   }
 }

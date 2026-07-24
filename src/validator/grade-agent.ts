@@ -11,6 +11,7 @@
  */
 
 import {
+  fingerprintToolDefs,
   runLitmus,
   type EvidenceBundle as LitmusBundle,
   type RunLitmusOptions,
@@ -81,6 +82,37 @@ export function composeToolFingerprint(
     .map((entry) => ({ endpoint: entry.endpoint, fingerprint: entry.fingerprint }))
     .sort((a, b) => (a.endpoint < b.endpoint ? -1 : a.endpoint > b.endpoint ? 1 : 0))
   return hashCanonical(canonicalizeValue(sorted))
+}
+
+/**
+ * The drift baseline, derived from the published evidence rather than stored beside it.
+ *
+ * B1 recomputes this from the bundle it fetched at `responseURI`, and A3a computes it from the bundle
+ * it just built, through this one function. Deriving it from the evidence means a swapped bundle
+ * changes the baseline as well as the responseHash, so there is no version of this where the two
+ * disagree quietly.
+ */
+export function baselineToolFingerprint(bundle: EvidenceBundle): Hex {
+  const entries = bundle.toolSurface.map((surface) => {
+    const tools = surface.pages.flatMap((page) => page.tools)
+    if (tools.length === 0) {
+      throw new GradeError(`the evidence records no tool surface for ${surface.endpoint}`)
+    }
+    return {
+      endpoint: surface.endpoint,
+      fingerprint: fingerprintToolDefs(
+        tools.map((tool) => {
+          const entry = tool as { name?: unknown; description?: unknown; inputSchema?: unknown }
+          return {
+            name: String(entry.name ?? ''),
+            description: String(entry.description ?? ''),
+            inputSchema: entry.inputSchema,
+          }
+        }),
+      ).fingerprint,
+    }
+  })
+  return composeToolFingerprint(entries)
 }
 
 function readLitmusBundle(endpoint: string, bundle: LitmusBundle | undefined): {
@@ -191,13 +223,24 @@ export async function gradeAgent(
     },
   }
 
+  // Composed two ways on purpose: from what the engine reported, and from the surface recorded in the
+  // bundle a verifier will fetch. They must agree, or the baseline B1 derives is not the baseline this
+  // grade certified, and the mismatch would surface as the gate refusing an honest agent.
+  const reported = composeToolFingerprint(fingerprints)
+  const derived = baselineToolFingerprint(bundle)
+  if (reported !== derived) {
+    throw new GradeError(
+      'the tool surface recorded in the bundle does not fingerprint to what the engine reported',
+    )
+  }
+
   return {
     grade,
     score: scoreForGrade(grade),
     bundle,
     evidenceHash: evidenceHash(bundle),
     methodologyVersion: methodologyVersion(),
-    toolFingerprint: composeToolFingerprint(fingerprints),
+    toolFingerprint: derived,
     ranAt: bundle.ranAt,
   }
 }

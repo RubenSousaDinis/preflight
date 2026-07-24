@@ -15,7 +15,7 @@
  * through this function that returns ALLOW because something failed.
  */
 
-import { keccak256 } from 'viem'
+import { keccak256, toHex } from 'viem'
 import { reasonOf } from '../../shared/errors.ts'
 import type {
   Detector,
@@ -26,7 +26,7 @@ import type {
   TxTuple,
   TxVerdict,
 } from '../../shared/types.ts'
-import { codeFingerprint } from './fingerprint.ts'
+import { NoCodeAtAddress, codeFingerprint } from './fingerprint.ts'
 import { forkAt, type ForkHandle } from './fork.ts'
 import { DETECTORS as REGISTERED } from './detectors/index.ts'
 import { gradedCodeFor } from './graded.ts'
@@ -36,6 +36,15 @@ export { DETECTORS } from './detectors/index.ts'
 
 /** A zero word, meaning "never obtained", used only on a path that already blocks. */
 const UNKNOWN_HASH = `0x${'00'.repeat(32)}` as Hex
+
+/**
+ * The fingerprint of an address holding no code.
+ *
+ * A named constant rather than the zero word, so a reader can tell "this is a wallet" from "this
+ * was never obtained". A stored baseline that no longer matches this is real drift: code that was
+ * there at grading time and is not there now.
+ */
+export const NO_CODE = keccak256(toHex('preflight:no-code-at-address'))
 
 export interface TxGuardDeps {
   forkAt: (chainId: ChainId, block?: bigint) => Promise<ForkHandle>
@@ -128,7 +137,20 @@ export async function txGuardWith(
       // asked for. Fingerprint, simulation, and tuple all describe the same state.
       tuple = tupleFor(tx, fork.block)
 
-      code = await deps.codeFingerprint(tx.chainId, tx.to, fork.block)
+      try {
+        code = await deps.codeFingerprint(tx.chainId, tx.to, fork.block)
+      } catch (err) {
+        // A wallet is not a contract that could not be read. Paying one is the most ordinary
+        // transaction there is, and there is no code at the address to drift, so this is a complete
+        // answer rather than a failure to obtain one. Every other fingerprint failure still blocks.
+        if (!(err instanceof NoCodeAtAddress)) throw err
+        code = {
+          fingerprint: NO_CODE,
+          proxyKind: 'none',
+          resolved: [],
+          observedBlock: fork.block,
+        }
+      }
       fingerprint = code.fingerprint
 
       const graded = deps.gradedCodeFor(tx.chainId, tx.to)

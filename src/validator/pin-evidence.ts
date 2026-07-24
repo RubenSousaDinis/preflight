@@ -154,6 +154,19 @@ export async function verifyPublishedEvidence(
   }
 }
 
+/**
+ * Fetches a published bundle's bytes, whatever it was published through.
+ *
+ * B1 reads evidence with this, so the gate and the verifier resolve a URI the same way. A scheme this
+ * does not fetch is a refusal rather than a guess.
+ */
+export async function fetchPublishedEvidence(
+  uri: string,
+  options: { fetchImpl?: typeof fetch; timeoutMs?: number } = {},
+): Promise<string> {
+  return readPublished(uri, options)
+}
+
 async function readPublished(
   uri: string,
   options: { fetchImpl?: typeof fetch; timeoutMs?: number },

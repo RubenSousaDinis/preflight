@@ -7,17 +7,29 @@ import { join } from 'node:path'
 import {
   METHODOLOGY_VERSION,
   canonicalStringify,
+  fingerprintToolDefs,
   type EvidenceBundle as LitmusBundle,
 } from '@polygraphso/litmus'
 
 import { GradeError } from '../shared/errors.ts'
 import type { AgentCard, EvidenceBundle } from '../shared/types.ts'
 import { canonicalize, canonicalizeValue, evidenceHash, hashCanonical } from './canonical.ts'
-import { composeToolFingerprint, gradeAgent, worstGrade } from './grade-agent.ts'
+import {
+  baselineToolFingerprint,
+  composeToolFingerprint,
+  gradeAgent,
+  worstGrade,
+} from './grade-agent.ts'
 import { methodologyVersion } from './methodology.ts'
 
 const FP_A = `0x${'a1'.repeat(32)}`
 const FP_B = `0x${'b2'.repeat(32)}`
+
+/** Two surfaces that differ, so two endpoints can carry genuinely different fingerprints. */
+const TOOLS_ONE = [
+  { name: 'summarize', description: 'Summarize text', inputSchema: { type: 'object' } },
+]
+const TOOLS_TWO = [{ name: 'translate', description: 'Translate text', inputSchema: { type: 'object' } }]
 
 function card(agentId: string, endpoints: string[]): AgentCard {
   return {
@@ -30,7 +42,15 @@ function card(agentId: string, endpoints: string[]): AgentCard {
   }
 }
 
+/**
+ * A bundle whose declared fingerprint is the hash of its own tool defs.
+ *
+ * gradeAgent cross-checks the two, so a fixture that declared an unrelated fingerprint would fail for
+ * the right reason. Computing it here keeps every fixture internally consistent, the way a real bundle
+ * is.
+ */
 function litmusBundle(overrides: Partial<LitmusBundle> = {}): LitmusBundle {
+  const toolDefs = overrides.toolDefs ?? TOOLS_ONE
   return {
     schemaVersion: '1.10.0',
     methodologyVersion: METHODOLOGY_VERSION,
@@ -38,8 +58,8 @@ function litmusBundle(overrides: Partial<LitmusBundle> = {}): LitmusBundle {
     resolvedVersion: null,
     selfReportedVersion: '1.2.3',
     target: { kind: 'http', url: 'https://demo.example/mcp' },
-    toolDefsFingerprint: FP_A,
-    toolDefs: [{ name: 'summarize', description: 'Summarize text', inputSchema: { type: 'object' } }],
+    toolDefsFingerprint: fingerprintToolDefs(toolDefs).fingerprint,
+    toolDefs,
     ranAt: '2026-07-25T09:00:00.000Z',
     harness: {
       package: '@polygraphso/litmus',
@@ -205,7 +225,7 @@ test('the worst letter across endpoints wins', async () => {
     runLitmusImpl: async (endpoint) =>
       litmusBundle({
         grade: endpoint.includes('two') ? 'D' : 'A',
-        toolDefsFingerprint: endpoint.includes('two') ? FP_B : FP_A,
+        toolDefs: endpoint.includes('two') ? TOOLS_TWO : TOOLS_ONE,
       }),
   })
   assert.equal(mixed.grade, 'D')
@@ -301,10 +321,26 @@ test('a fingerprint that is not 32 hex bytes is refused as a baseline', () => {
 
 test('the graded fingerprint is the composition B1 will recompute', async () => {
   const result = await gradeAgent(card('9', ['https://a.example/mcp']), {
-    runLitmusImpl: async () => litmusBundle({ toolDefsFingerprint: FP_A }),
+    runLitmusImpl: async () => litmusBundle(),
   })
+  const expected = fingerprintToolDefs(TOOLS_ONE).fingerprint
   assert.equal(
     result.toolFingerprint,
-    composeToolFingerprint([{ endpoint: 'https://a.example/mcp', fingerprint: FP_A }]),
+    composeToolFingerprint([{ endpoint: 'https://a.example/mcp', fingerprint: expected }]),
+  )
+  assert.equal(baselineToolFingerprint(result.bundle), result.toolFingerprint)
+})
+
+test('a bundle whose recorded surface does not match its own fingerprint is refused', async () => {
+  await assert.rejects(
+    () =>
+      gradeAgent(card('10', ['https://a.example/mcp']), {
+        runLitmusImpl: async () => ({ ...litmusBundle(), toolDefsFingerprint: FP_B }) as LitmusBundle,
+      }),
+    (err: unknown) => {
+      assert.ok(err instanceof GradeError)
+      assert.match(err.reason, /no usable tool fingerprint|does not fingerprint to what the engine reported/)
+      return true
+    },
   )
 })
