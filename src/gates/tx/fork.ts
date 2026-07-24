@@ -99,13 +99,24 @@ function terminate(child: ChildProcess): void {
 }
 
 /**
+ * The `Fork` from `01-INTERFACES.md` section 7, plus the height it was taken at.
+ *
+ * The height is on the handle because a caller needs it before it runs anything: the drift check
+ * fingerprints the callee at the fork block and has to happen before the transaction is simulated.
+ * Additive, so anything typed against the frozen `Fork` still accepts this.
+ */
+export interface ForkHandle extends Fork {
+  readonly block: bigint
+}
+
+/**
  * Start a fork of `chainId` and hand back the handle.
  *
  * Forks at head unless a block is given. Head is the right default because the verdict answers
  * "what would this do now", and the block that was actually forked is recorded either way so the
  * answer stays reproducible for that block and state.
  */
-export async function forkAt(chainId: ChainId, block?: bigint): Promise<Fork> {
+export async function forkAt(chainId: ChainId, block?: bigint): Promise<ForkHandle> {
   const rpcUrl = rpcUrlFor(chainId)
   const port = await freePort()
   const url = `http://127.0.0.1:${port}`
@@ -181,6 +192,7 @@ export async function forkAt(chainId: ChainId, block?: bigint): Promise<Fork> {
   const forkBlock = BigInt(await rpc<Hex>(url, 'eth_blockNumber', []))
 
   return {
+    block: forkBlock,
     async run(tx: PendingTx): Promise<SimulationResult> {
       return runOnFork(url, forkBlock, chainId, tx)
     },
