@@ -1,5 +1,14 @@
 import type { ReactNode } from "react";
-import type { RenderableError } from "../lib/contracts";
+import type { PreflightError } from "@/src/shared";
+
+/**
+ * What the error state needs off a typed failure. Structural rather than the class
+ * itself, so a serialized error crossing the server boundary still renders.
+ */
+export type RenderableError = Pick<
+  PreflightError,
+  "code" | "reason" | "retryable"
+>;
 
 /*
   The three states a live demo actually lands on, decided once here so C2, C3 and C4

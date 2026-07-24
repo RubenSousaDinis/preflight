@@ -1,4 +1,4 @@
-import type { Grade } from "./contracts";
+import type { Grade } from "@/src/shared";
 
 /*
   The token module.
