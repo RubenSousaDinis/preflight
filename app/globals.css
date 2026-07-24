@@ -1,26 +1,61 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/*
+  Base layer only. Every colour and family in this app comes from the token module
+  (app/lib/tokens.ts), set as CSS custom properties on :root by the root layout, so
+  no literal value is ever spelled in this file.
+*/
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-paper: var(--pf-paper);
+  --color-panel: var(--pf-panel);
+  --color-band: var(--pf-band);
+  --color-rule: var(--pf-rule);
+  --color-ink: var(--pf-ink);
+  --color-accent: var(--pf-accent);
+  --color-grade-a: var(--pf-grade-a);
+  --color-grade-b: var(--pf-grade-b);
+  --color-grade-c: var(--pf-grade-c);
+  --color-grade-d: var(--pf-grade-d);
+  --color-grade-f: var(--pf-grade-f);
+  --font-display: var(--pf-display);
+  --font-body: var(--pf-body);
+  --font-data: var(--pf-data);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  html {
+    color-scheme: light;
   }
-}
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  body {
+    min-height: 100svh;
+    background-color: var(--pf-paper);
+    color: var(--pf-ink);
+    font-family: var(--pf-body);
+    font-size: 15px;
+    line-height: 1.6;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection {
+    background-color: var(--pf-band);
+  }
+
+  /* Keyboard focus stays visible on every route. */
+  :focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
 }
