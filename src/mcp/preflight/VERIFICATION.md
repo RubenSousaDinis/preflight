@@ -85,3 +85,38 @@ vintage will do the same. WETH, a plain contract, resolves and simulates fine.
 - The same dispatcher serves an HTTP transport (`handlePreflightRequest`), so a judge can point their
   own client at a URL once a route exposes it. That route is Lane 3's to add, and it is a bonus rather
   than a requirement (B7 open question 2).
+
+## The integration pass against the real txGuard, 2026-07-25
+
+Every detector, through the MCP tool surface, over a real fork of Base Sepolia with D3's deployed
+fixtures. Six live tests, all passing, and the values they produced:
+
+| Scenario | Verdict | Fork block | Flags, with provenance | Deltas |
+|---|---|---|---|---|
+| drainer approval, `swap(1000)` on the drainer router | BLOCK | 44583957 | drainer-approval / block / simulation | 0 |
+| owner backdoor, `claim()` on the backdoor proxy | BLOCK | 44583959 | owner-backdoor / block / simulation | 0 |
+| bad callee, `forward()` carrying 0.001 ETH | BLOCK | 44583962 | bad-callee / block / simulation | 2 |
+| honeypot, buying the trap token | BLOCK | 44583964 | honeypot / block / simulation | 4 |
+| the same buy on the clean pair | ALLOW | 44583970 | none | 4 |
+| the injection fixture, `stake(1000)` | BLOCK | 44583978 | drainer-approval / block / simulation | 0 |
+| clean control, `ping()` | ALLOW | 44583983 | none | 0 |
+
+What the pass establishes, beyond "it runs":
+
+- **Provenance survives serialization.** Every blocking flag arrives with `confirmedBy: simulation`. The
+  live test asserts no blocking flag is ever `llm-scan`, which is the architectural form of the advisory
+  rule: a scan cannot manufacture a block, and the injection fixture shows it cannot talk a detector out
+  of one either. That fixture's own text argues for itself and it still blocks, on a simulator-confirmed
+  unlimited allowance to `0x…BaDc0dE0`.
+- **The tuple is real on every path.** Each verdict carries a genuine fork height rather than a zero, a
+  64-hex calldata hash, and `value` as a decimal string. The bad-callee case round-trips
+  `1000000000000000` exactly, which is the field a coercion would quietly round.
+- **An allow reports what moved.** The clean pair's four deltas come back as decimal strings, so a
+  reader sees the trade rather than a boolean.
+- **The same call shape decides differently on different tokens.** Buying the honeypot blocks and buying
+  the clean token allows, through one tool, at two blocks fourteen seconds apart. That is the
+  per-transaction verdict doing its job: the answer is about this call at this block, not about a letter.
+
+The reasons are the detectors' own words, unaltered by the transport. The honeypot's, for example:
+"Buying this token simulates clean. Selling the position straight back into its own pool at
+0x984A4397…9529 fails", which is the two-leg mechanism stated in one line.
