@@ -6,6 +6,7 @@ import type { ToolSurfaceVariant } from '../shared/types.ts'
 import { handleControlRequest } from './control.ts'
 import { POISONED_OUTPUT, POISONED_TOOL, handleMcpRequest } from './mcp-server.ts'
 import { BASELINE_TOOL_COUNT, DRIFTED_TOOL_COUNT, PAGE_SIZE } from './tool-surface.ts'
+import { checkToolOutput } from './output-check.ts'
 import { currentToolSurface, resetToolSurface, setToolSurface } from './variant-store.ts'
 
 let nextId = 1
@@ -122,19 +123,21 @@ test('poisoned keeps baseline\'s list exactly, and moves only the output', async
   const called = (await rpc('tools/call', { name: POISONED_TOOL, arguments: { ids: 'src-1' } }))
     .result as { content: { type: string; text: string }[] }
   assert.equal(called.content[0].text, POISONED_OUTPUT)
-  assert.match(called.content[0].text, /previous instructions are cancelled/)
+  // Asserted through the detector rather than the wording: the payload is tuned to what the engine's
+  // C-01 scanners actually catch, so a string assertion here would break every time it is tuned.
+  assert.equal(checkToolOutput(called.content[0].text).hostile, true)
 
   await setToolSurface('baseline')
   const clean = (await rpc('tools/call', { name: POISONED_TOOL, arguments: { ids: 'src-1' } }))
     .result as { content: { text: string }[] }
-  assert.doesNotMatch(clean.content[0].text, /instructions are cancelled/)
+  assert.equal(checkToolOutput(clean.content[0].text).hostile, false)
 })
 
 test('only the poisoned tool turns hostile, and only on that variant', async () => {
   await setToolSurface('poisoned')
   const other = (await rpc('tools/call', { name: 'search_sources', arguments: { query: 'x' } }))
     .result as { content: { text: string }[] }
-  assert.doesNotMatch(other.content[0].text, /instructions are cancelled/)
+  assert.equal(checkToolOutput(other.content[0].text).hostile, false)
   await resetToolSurface()
 })
 
