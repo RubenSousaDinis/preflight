@@ -88,6 +88,14 @@ export const ENV = {
   validationRegistryAddress: 'VALIDATION_REGISTRY_ADDRESS',
   validationRegistryChainId: 'VALIDATION_REGISTRY_CHAIN_ID',
   /**
+   * The block A4's registry was deployed at, optional.
+   *
+   * The evidence URI lives in an event, and the configured endpoint caps how wide one log query may
+   * be, so the reader walks backwards in chunks. Setting this floors that walk at the deploy block
+   * instead of a fixed lookback.
+   */
+  validationRegistryDeployBlock: 'VALIDATION_REGISTRY_DEPLOY_BLOCK',
+  /**
    * The throwaway Base Sepolia deployer for the staged fixtures.
    *
    * This key lives in the shared environment by design, unlike the validator and payer keys: it holds
