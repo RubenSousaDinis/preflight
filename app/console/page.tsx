@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Container } from "../components/container";
 import { Panel } from "../components/panel";
+import { EmptyState } from "../components/states";
 
 export const metadata: Metadata = {
   title: "Console",
@@ -25,26 +26,26 @@ export default function ConsolePage() {
       <div className="mt-8 grid gap-4">
         {/* TODO-INTEGRATE: C2 mounts the hiring floor here, against Lane 1's vetAgent (01-INTERFACES section 4). */}
         <Panel eyebrow="beat 1" title="Hiring floor" status="not wired">
-          <p className="text-ink/80">
+          <EmptyState>
             Candidate agents, their attested grade, their live fingerprint check,
             and the hire or refuse verdict for each.
-          </p>
+          </EmptyState>
         </Panel>
 
         {/* TODO-INTEGRATE: C3 mounts the firewall panel here, against Lane 2's txGuard (01-INTERFACES section 9). */}
         <Panel eyebrow="beat 2" title="Firewall" status="not wired">
-          <p className="text-ink/80">
+          <EmptyState>
             A pending transaction, the flags the simulation raised against it, and
             the block and state the verdict is reproducible from.
-          </p>
+          </EmptyState>
         </Panel>
 
         {/* TODO-INTEGRATE: receipt rendering, against Lane 1's B2 chain (01-INTERFACES section 5). */}
         <Panel eyebrow="audit trail" title="Receipts" status="not wired">
-          <p className="text-ink/80">
+          <EmptyState>
             The signed, hash chained record of every decision on this page, in the
             order it was made.
-          </p>
+          </EmptyState>
         </Panel>
       </div>
     </Container>

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Container } from "../components/container";
 import { Panel } from "../components/panel";
+import { EmptyState } from "../components/states";
 
 export const metadata: Metadata = {
   title: "Deck",
@@ -24,10 +25,10 @@ export default function DeckPage() {
 
       <div className="mt-8">
         <Panel eyebrow="slides" title="Stage deck" status="not wired">
-          <p className="text-ink/80">
+          <EmptyState>
             Slides load here once the deck lands. Fonts resolve by plain family
             name, which is why this app does not use next/font.
-          </p>
+          </EmptyState>
         </Panel>
       </div>
     </Container>
