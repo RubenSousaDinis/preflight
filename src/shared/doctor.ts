@@ -51,7 +51,9 @@ const ITEMS: ItemSpec[] = [
   { name: ENV.hederaRpc, tier: 'expected', note: 'the x402 payment rail' },
   { name: ENV.hederaAccountId, tier: 'expected', note: 'the ECDSA payer account' },
   { name: ENV.hederaPrivateKey, tier: 'expected', note: 'the ECDSA payer key' },
-  { name: ENV.zerogStorageKey, tier: 'expected', note: 'pinning evidence bundles' },
+  { name: ENV.zerogStorageKey, tier: 'expected', note: 'pinning evidence bundles to 0G Storage' },
+  { name: ENV.zerogRpc, tier: 'expected', note: 'the 0G chain endpoint an upload settles against' },
+  { name: ENV.zerogIndexer, tier: 'expected', note: 'the 0G Storage indexer an upload goes through' },
   { name: ENV.zerogComputeKey, tier: 'optional', note: 'the advisory scan; it cannot move a verdict' },
   {
     name: ENV.validationRegistryAddress,
@@ -59,7 +61,6 @@ const ITEMS: ItemSpec[] = [
     note: 'set once A4 deploys; every registry read fails closed until then',
   },
   { name: ENV.validationRegistryChainId, tier: 'expected', note: 'the chain A4 deployed to' },
-  { name: ENV.ipfsGateway, tier: 'optional', note: 'one gateway, never a race; a default is stated' },
 ]
 
 export function doctor(): DoctorReport {

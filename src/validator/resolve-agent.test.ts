@@ -5,7 +5,7 @@ import type { AddressInfo } from 'node:net'
 import type { PublicClient } from 'viem'
 
 import { AgentResolveError } from '../shared/errors.ts'
-import { classifyScheme, fetchCardDocument, ipfsToGatewayUrl } from './fetch-card.ts'
+import { classifyScheme, fetchCardDocument } from './fetch-card.ts'
 import { extractMcpEndpoints, extractSkillRefs, parseAgentCard } from './agent-card.ts'
 import { readAgentURI, toTokenId } from './identity-registry.ts'
 import { resolveAgent, resolveAgentDetailed } from './resolve-agent.ts'
@@ -45,15 +45,26 @@ function stubClient(behaviour: {
   } as unknown as PublicClient
 }
 
+/**
+ * Runs a real local server and hands back a transport that points every https URL at it.
+ *
+ * The production code fetches https and nothing else, so the way to exercise a real socket, a real
+ * 404, and a real hang without loosening that rule is to inject the transport and leave the scheme
+ * check alone.
+ */
 async function withServer(
   handler: Parameters<typeof createServer>[1],
-  body: (base: string) => Promise<void>,
+  body: (transport: typeof fetch) => Promise<void>,
 ): Promise<void> {
   const server: Server = createServer(handler)
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const { port } = server.address() as AddressInfo
+  const transport: typeof fetch = (input, init) => {
+    const url = new URL(typeof input === 'string' ? input : String(input))
+    return fetch(`http://127.0.0.1:${port}${url.pathname}`, init)
+  }
   try {
-    await body(`http://127.0.0.1:${port}`)
+    await body(transport)
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()))
   }
@@ -108,22 +119,23 @@ test('the read is pinned to an explicit block, and the block is reported', async
 
 // --- scheme classification and fetching -------------------------------------
 
-test('https, ipfs and data are fetched, and every other scheme is a typed failure', () => {
+test('https and data are fetched, and every other scheme is a typed failure', () => {
   assert.equal(classifyScheme('https://example.com/card.json'), 'https')
-  assert.equal(classifyScheme('ipfs://bafy/card.json'), 'ipfs')
   assert.equal(classifyScheme('data:application/json,{}'), 'data')
   assert.throws(() => classifyScheme('http://example.com/card.json'), AgentResolveError)
   assert.throws(() => classifyScheme('ftp://example.com/card.json'), AgentResolveError)
   assert.throws(() => classifyScheme('example.com/card.json'), AgentResolveError)
 })
 
-test('ipfs URIs map onto the one configured gateway', () => {
-  assert.equal(
-    ipfsToGatewayUrl('ipfs://bafy123/card.json', 'https://gw.example/ipfs/'),
-    'https://gw.example/ipfs/bafy123/card.json',
+test('an ipfs tokenURI refuses, and says what this project stores evidence on instead', () => {
+  assert.throws(
+    () => classifyScheme('ipfs://bafy/card.json'),
+    (err: unknown) => {
+      assert.ok(err instanceof AgentResolveError)
+      assert.match(err.reason, /0G Storage/)
+      return true
+    },
   )
-  assert.equal(ipfsToGatewayUrl('ipfs://ipfs/bafy123', 'https://gw.example/ipfs'), 'https://gw.example/ipfs/bafy123')
-  assert.throws(() => ipfsToGatewayUrl('ipfs://', 'https://gw.example/ipfs/'), AgentResolveError)
 })
 
 test('a data URI is decoded in process, base64 or percent encoded', async () => {
@@ -148,9 +160,9 @@ test('an oversized document throws instead of being parsed', async () => {
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(JSON.stringify({ ...CARD, filler: 'x'.repeat(5_000) }))
     },
-    async (base) => {
+    async (transport) => {
       await assert.rejects(
-        () => fetchCardDocument(`${base}/card.json`.replace('http://', 'https://'), { maxBytes: 100 }),
+        () => fetchCardDocument('https://cards.example/card.json', { maxBytes: 100, fetchImpl: transport }),
         AgentResolveError,
       )
     },
@@ -163,10 +175,9 @@ test('a 404 throws rather than falling back to anything', async () => {
       res.writeHead(404)
       res.end('not found')
     },
-    async (base) => {
-      // classifyScheme refuses http, so the gateway path is what exercises a real socket here.
+    async (transport) => {
       await assert.rejects(
-        () => fetchCardDocument('ipfs://bafy/card.json', { gateway: `${base}/ipfs/` }),
+        () => fetchCardDocument('https://cards.example/card.json', { fetchImpl: transport }),
         (err: unknown) => {
           assert.ok(err instanceof AgentResolveError)
           assert.match(err.reason, /HTTP 404/)
@@ -183,9 +194,13 @@ test('a hanging endpoint throws on the timeout rather than parking the caller', 
     () => {
       /* never responds */
     },
-    async (base) => {
+    async (transport) => {
       await assert.rejects(
-        () => fetchCardDocument('ipfs://bafy/card.json', { gateway: `${base}/ipfs/`, timeoutMs: 250 }),
+        () =>
+          fetchCardDocument('https://cards.example/card.json', {
+            timeoutMs: 250,
+            fetchImpl: transport,
+          }),
         (err: unknown) => {
           assert.ok(err instanceof AgentResolveError)
           assert.equal(err.retryable, true)
@@ -196,18 +211,20 @@ test('a hanging endpoint throws on the timeout rather than parking the caller', 
   )
 })
 
-test('an ipfs card resolves through the gateway', async () => {
+test('an https card is fetched over a real socket and recorded as the registry gave it', async () => {
   await withServer(
     (_req, res) => {
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(JSON.stringify(CARD))
     },
-    async (base) => {
-      const fetched = await fetchCardDocument('ipfs://bafy/card.json', { gateway: `${base}/ipfs/` })
-      assert.equal(fetched.scheme, 'ipfs')
-      assert.equal(fetched.tokenURI, 'ipfs://bafy/card.json', 'the URI is recorded as the registry gave it')
-      assert.match(fetched.fetchedFrom, /^http:\/\/127\.0\.0\.1/)
+    async (transport) => {
+      const fetched = await fetchCardDocument('https://cards.example/card.json', {
+        fetchImpl: transport,
+      })
+      assert.equal(fetched.scheme, 'https')
+      assert.equal(fetched.tokenURI, 'https://cards.example/card.json')
       assert.deepEqual(JSON.parse(fetched.text), CARD)
+      assert.equal(fetched.bytes, Buffer.byteLength(JSON.stringify(CARD)))
     },
   )
 })

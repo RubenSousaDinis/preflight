@@ -1,12 +1,18 @@
 /**
  * Fetching an agent card document from whatever the registry pointed at.
  *
- * Three schemes are fetched and nothing else. `https:` goes direct, `ipfs:` goes through the one
- * configured gateway, and `data:` is decoded in process. `data:` is here because the live registry
- * already serves cards that way and because it is the shape A3b falls back to when pinning fights,
- * so it is a stated case rather than a guess. Every other scheme, including plain `http:`, is a
- * typed failure: a validator that quietly widens what it will fetch is a validator whose runs stop
+ * Two schemes are fetched and nothing else. `https:` goes direct, and `data:` is decoded in process,
+ * because the live registry already serves cards that way and because it is the shape A3b falls back
+ * to when pinning fights. Every other scheme, including plain `http:` and `ipfs:`, is a typed
+ * failure: a validator that quietly widens what it will fetch is a validator whose runs stop
  * matching each other.
+ *
+ * `ipfs:` is out by decision, not by omission. This project's evidence lives on 0G Storage
+ * (02-DECISIONS §12), so a public IPFS gateway would be a dependency with nothing behind it, and the
+ * measurements taken on 2026-07-24 say it is not one worth taking: for a CID pinned elsewhere,
+ * `ipfs.io` never answered inside 25s and `dweb.link` never answered past its redirect inside 20s.
+ * An `ipfs://` tokenURI therefore refuses with a reason a reader can act on, which is A2's own
+ * pre-authorized degrade.
  *
  * Both bounds are load-bearing. An unbounded fetch parks the critical path behind a document nobody
  * on this team controls, and an unbounded size makes a hostile card a cheap attack on a public
@@ -14,15 +20,14 @@
  */
 
 import { AgentResolveError } from '../shared/errors.ts'
-import { ipfsGateway } from '../shared/config.ts'
 
-export type CardScheme = 'https' | 'ipfs' | 'data'
+export type CardScheme = 'https' | 'data'
 
 export interface FetchedCard {
   scheme: CardScheme
-  /** The URI as the registry reported it. Never rewritten to a gateway URL. */
+  /** The URI as the registry reported it. Never rewritten. */
   tokenURI: string
-  /** Where the bytes actually came from, which for ipfs is the gateway. */
+  /** Where the bytes actually came from. */
   fetchedFrom: string
   text: string
   bytes: number
@@ -31,7 +36,8 @@ export interface FetchedCard {
 export interface FetchCardOptions {
   timeoutMs?: number
   maxBytes?: number
-  gateway?: string
+  /** Injected transport. Defaults to the platform fetch; tests pass a local one. */
+  fetchImpl?: typeof fetch
 }
 
 export const DEFAULT_TIMEOUT_MS = 10_000
@@ -41,21 +47,16 @@ export const DEFAULT_MAX_BYTES = 1_048_576
 export function classifyScheme(tokenURI: string): CardScheme {
   const uri = tokenURI.trim()
   if (uri.startsWith('https://')) return 'https'
-  if (uri.startsWith('ipfs://')) return 'ipfs'
   if (uri.startsWith('data:')) return 'data'
+  if (uri.startsWith('ipfs://')) {
+    throw new AgentResolveError(
+      'tokenURI is an ipfs URI, which this validator does not fetch: evidence here is stored on 0G Storage, and a public gateway is not a dependency this project takes',
+    )
+  }
   const scheme = uri.slice(0, Math.max(uri.indexOf(':'), 0)) || 'none'
   throw new AgentResolveError(
-    `tokenURI scheme ${JSON.stringify(scheme)} is not fetched by this validator, which reads https, ipfs and data`,
+    `tokenURI scheme ${JSON.stringify(scheme)} is not fetched by this validator, which reads https and data`,
   )
-}
-
-/** `ipfs://CID/path` and `ipfs://ipfs/CID` both become one gateway URL. One gateway, never a race. */
-export function ipfsToGatewayUrl(tokenURI: string, gateway = ipfsGateway()): string {
-  let path = tokenURI.trim().slice('ipfs://'.length)
-  if (path.startsWith('ipfs/')) path = path.slice('ipfs/'.length)
-  if (path.length === 0) throw new AgentResolveError('tokenURI is an ipfs URI with no content id')
-  const base = gateway.endsWith('/') ? gateway : `${gateway}/`
-  return `${base}${path}`
 }
 
 function decodeDataUri(tokenURI: string): string {
@@ -128,12 +129,12 @@ export async function fetchCardDocument(
     return { scheme, tokenURI, fetchedFrom: 'data:', text, bytes }
   }
 
-  const fetchedFrom =
-    scheme === 'ipfs' ? ipfsToGatewayUrl(tokenURI, options.gateway) : tokenURI.trim()
+  const fetchedFrom = tokenURI.trim()
+  const transport = options.fetchImpl ?? fetch
 
   let response: Response
   try {
-    response = await fetch(fetchedFrom, {
+    response = await transport(fetchedFrom, {
       redirect: 'follow',
       headers: { accept: 'application/json' },
       signal: AbortSignal.timeout(timeoutMs),
@@ -150,11 +151,10 @@ export async function fetchCardDocument(
 
   if (!response.ok) {
     // Never fall back to a cached or default card. A default card is an ungraded agent wearing a
-    // grade, and a gateway that rate limits is disclosed rather than silently swapped.
-    throw new AgentResolveError(
-      `the card at ${fetchedFrom} answered HTTP ${response.status}`,
-      { retryable: response.status >= 500 || response.status === 429 },
-    )
+    // grade, and a host that rate limits is disclosed rather than silently swapped for another.
+    throw new AgentResolveError(`the card at ${fetchedFrom} answered HTTP ${response.status}`, {
+      retryable: response.status >= 500 || response.status === 429,
+    })
   }
 
   const text = await readCapped(response, maxBytes, fetchedFrom)
