@@ -6,6 +6,23 @@
   no literal value is ever spelled in this file.
 */
 
+@theme inline {
+  --color-paper: var(--pf-paper);
+  --color-panel: var(--pf-panel);
+  --color-band: var(--pf-band);
+  --color-rule: var(--pf-rule);
+  --color-ink: var(--pf-ink);
+  --color-accent: var(--pf-accent);
+  --color-grade-a: var(--pf-grade-a);
+  --color-grade-b: var(--pf-grade-b);
+  --color-grade-c: var(--pf-grade-c);
+  --color-grade-d: var(--pf-grade-d);
+  --color-grade-f: var(--pf-grade-f);
+  --font-display: var(--pf-display);
+  --font-body: var(--pf-body);
+  --font-data: var(--pf-data);
+}
+
 @layer base {
   html {
     color-scheme: light;
@@ -14,10 +31,17 @@
 
   body {
     min-height: 100svh;
+    background-color: var(--pf-paper);
+    color: var(--pf-ink);
+    font-family: var(--pf-body);
     font-size: 15px;
     line-height: 1.6;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection {
+    background-color: var(--pf-band);
   }
 
   /* Keyboard focus stays visible on every route. */
