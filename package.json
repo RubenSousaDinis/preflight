@@ -16,6 +16,8 @@
   "dependencies": {
     "@0gfoundation/0g-storage-ts-sdk": "^1.2.10",
     "@anthropic-ai/sdk": "^0.115.0",
+    "@hashgraph/hedera-agent-kit": "^4.0.0",
+    "@hiero-ledger/sdk": "^2.86.2",
     "@polygraphso/litmus": "^0.36.0",
     "@x402/fetch": "^2.19.0",
     "@x402/hedera": "^2.19.0",
