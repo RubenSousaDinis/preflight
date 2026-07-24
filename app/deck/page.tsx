@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Container } from "../components/container";
-import { Panel } from "../components/panel";
-import { EmptyState } from "../components/states";
+import { DeckStage } from "../components/deck/deck-stage";
 
 export const metadata: Metadata = {
   title: "Deck",
@@ -9,7 +8,7 @@ export const metadata: Metadata = {
 
 export default function DeckPage() {
   return (
-    <Container className="py-10 sm:py-12">
+    <Container className="py-8 sm:py-10">
       <header className="max-w-[46rem]">
         <p className="font-data text-[0.68rem] uppercase tracking-[0.16em] text-accent">
           stage
@@ -18,18 +17,13 @@ export default function DeckPage() {
           Deck
         </h1>
         <p className="mt-4 text-ink/80">
-          The stage deck renders here, at the same width as the console so the
-          projector never has to be re-focused between them.
+          Arrow keys move between slides. Every claim here can be pointed at on
+          the console, which is the only reason to make it.
         </p>
       </header>
 
-      <div className="mt-8">
-        <Panel eyebrow="slides" title="Stage deck" status="not wired">
-          <EmptyState>
-            Slides load here once the deck lands. Fonts resolve by plain family
-            name, which is why this app does not use next/font.
-          </EmptyState>
-        </Panel>
+      <div className="mt-6">
+        <DeckStage />
       </div>
     </Container>
   );

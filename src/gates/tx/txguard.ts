@@ -28,16 +28,11 @@ import type {
 } from '../../shared/types.ts'
 import { codeFingerprint } from './fingerprint.ts'
 import { forkAt, type ForkHandle } from './fork.ts'
+import { DETECTORS as REGISTERED } from './detectors/index.ts'
 import { gradedCodeFor } from './graded.ts'
 import type { SimulationResult, ChainId, Address, CodeFingerprint } from '../../shared/types.ts'
 
-/**
- * The detectors, in the order they run. B5b to B5e append here.
- *
- * The set is closed at four: drainer approval, honeypot, bad callee, owner or upgrade backdoor
- * (02-DECISIONS section 6). New input to these, never a fifth detector.
- */
-export const DETECTORS: Detector[] = []
+export { DETECTORS } from './detectors/index.ts'
 
 /** A zero word, meaning "never obtained", used only on a path that already blocks. */
 const UNKNOWN_HASH = `0x${'00'.repeat(32)}` as Hex
@@ -53,7 +48,7 @@ const liveDeps: TxGuardDeps = {
   forkAt,
   codeFingerprint: (chainId, address, atBlock) => codeFingerprint(chainId, address, atBlock),
   gradedCodeFor,
-  detectors: DETECTORS,
+  detectors: REGISTERED,
 }
 
 function tupleFor(tx: PendingTx, block: bigint): TxTuple {
