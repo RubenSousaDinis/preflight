@@ -7,6 +7,8 @@ import {
   CHAINS,
   chainById,
   ENV,
+  fixtureDeployerAddress,
+  fixtureDeployerPrivateKey,
   identityRegistryFor,
   requireEnv,
   rpcUrlFor,
@@ -143,6 +145,26 @@ test('the validation registry needs both halves or it fails closed', () => {
       assert.deepEqual(validationRegistry(), { address: '0xdead', chainId: 84532 })
     },
   )
+})
+
+test('the fixture deployer is read from config, not from a hardcoded variable name', () => {
+  withEnv(
+    { [ENV.fixtureDeployerPrivateKey]: undefined, [ENV.fixtureDeployerAddress]: undefined },
+    () => {
+      assert.throws(() => fixtureDeployerPrivateKey(), ConfigError)
+      assert.throws(() => fixtureDeployerAddress(), ConfigError)
+    },
+  )
+  withEnv(
+    { [ENV.fixtureDeployerPrivateKey]: '0xkey', [ENV.fixtureDeployerAddress]: 'not-an-address' },
+    () => {
+      assert.equal(fixtureDeployerPrivateKey(), '0xkey')
+      assert.throws(() => fixtureDeployerAddress(), ConfigError)
+    },
+  )
+  withEnv({ [ENV.fixtureDeployerAddress]: '0xdeadbeef' }, () => {
+    assert.equal(fixtureDeployerAddress(), '0xdeadbeef')
+  })
 })
 
 test('requireEnv names the variable and what it blocks', () => {

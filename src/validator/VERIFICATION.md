@@ -34,8 +34,30 @@ rpc probe
 ```
 
 Every RPC answered and reported the chain id it was configured as, so none of the three is pointing
-at the wrong network. `VALIDATOR_ADDRESS` is a real gap, not a naming choice: B1 checks who wrote a
-validation record on a read path that must not hold the private key.
+at the wrong network. `VALIDATOR_ADDRESS` was a real gap at that point, not a naming choice: B1 checks
+who wrote a validation record on a read path that must not hold the private key.
+
+### Second run, operator machine with the full environment, 2026-07-25
+
+Reported **every required item resolved**, 15 items. The only unset values were the two optional
+explorer keys (Sourcify is the primary verified-source path and needs no key) and the two
+`VALIDATION_REGISTRY_*` values, which wait on A4 by design, so every registry read fails closed until
+it lands. That is the correct state, not a gap.
+
+Provisioned and live-verified between the two runs:
+
+| Item | Value | Verified how |
+|---|---|---|
+| `VALIDATOR_ADDRESS` | `0xCFad8f21B8469790ADc3922814d1df4E08ECF1c8` | set in the environment; the read path now has a validator to compare against |
+| `HEDERA_TESTNET_ACCOUNT_ID` | `0.0.9695674`, ECDSA | confirmed on the mirror node, holding 1000 HBAR |
+| `ZEROG_RPC_URL` | `https://evmrpc-testnet.0g.ai` | answered with chain id 16602 |
+| `ZEROG_INDEXER_URL` | `https://indexer-storage-testnet-turbo.0g.ai` | answered a JSON-RPC probe |
+| `FIXTURE_DEPLOYER_ADDRESS` | `0x38E2F18Bc9c50Dc43B93A8A4BcEF518A0B897bA2` | set in the environment; Base Sepolia funding still pending at the faucet |
+
+The fixture deployer key and address joined the config surface and the doctor checklist as expected
+tier, so the lane that deploys the staged fixtures reads them from config rather than naming the
+variable at a call site. The key sits in the shared environment deliberately: it holds faucet funds on
+a testnet, which is not the custody rule the validator and payer keys follow.
 
 ## A2, AgentCard resolution
 
@@ -91,6 +113,73 @@ bounds: tested against a real local socket. A 404 refuses and is not retryable, 
 
 suite: 36 tests, 36 pass, offline. `tsc --noEmit` clean, `eslint` clean, `next build` green.
 ```
+
+## A3a, grade, canonicalize, hash
+
+```
+methodologyVersion read from package: litmus-v17
+litmus package version installed:     0.36.0 (02-DECISIONS §2 recorded 0.35.0 on 7/20, VERIFY fired)
+value tracks the package, proven:     installed 0.35.0 with --no-save, no source edit, the CLI
+                                      reported litmus-v16; restored 0.36.0, it reported litmus-v17
+engine bundle schema version:         1.10.0
+
+live grade, end to end through gradeAgent, 2026-07-25:
+  target        https://mcp.deepwiki.com/mcp   (02-DECISIONS §13.3's beat-3 primary)
+  grade         B, score 75
+  evidenceHash  0x57d7f471f53d377521098adda34f425099c89dc8d44c1eee6580b5cad02aee6a
+  fingerprint   0x26dbdfa6386cf3e82b457512d603e682ab0d5b90c8685c95776cc0166c1a6d0e
+  tools         3, enumerated in one page: ask_question, read_wiki_contents, read_wiki_structure
+  wall clock    62s
+  presented as  claude-code 2.1.0 (the engine picks a client identity per litmus-v17)
+
+round trip, same process:     byte identical
+round trip, separate process: verified on that real bundle. Written as canonical bytes (19326),
+  reloaded by `node src/validator/canonical-roundtrip.ts`, re-canonicalized, re-hashed to
+  0x57d7f471...aee6a, equal to the in-process value. The test does the same with the keys
+  deliberately reversed on the way to disk, so the child has to sort them back itself.
+our canonical form vs the engine's canonicalStringify: byte identical on every fixture, asserted in
+  the suite, so a divergence fails a test instead of producing an unverifiable attestation.
+
+known-A / known-F fixtures: pending D1 and E1. The engine integration is proven against a live
+  third-party server instead, and the two fixtures grade through the same path once they exist.
+
+suite: 80 tests, 76 pass, 4 skipped (Lane 2's live-network cases), 0 fail.
+```
+
+### The finding that changes beat 1's copy
+
+**A remote https MCP server cannot grade A. B is its ceiling.** The engine's own words, from the run
+above: `Injection checks passed; egress not verified. Not verified: C-02, C-03 (no sandbox (Docker
+unavailable); no canary could be planted on a remote target).` C-01 and C-04 passed.
+
+Two separate causes, and only one is fixable on the day:
+
+- **C-02 skipped: no sandbox, Docker unavailable.** Starting Docker Desktop addresses this one
+  (02-DECISIONS §13.6 already recorded the daemon as not running).
+- **C-03 skipped: no canary could be planted on a remote target.** Inherent. A canary has to be
+  planted in the server's own environment, which a remote operator's server does not offer.
+
+The installed package states the same rule in its own types: `PAYMENT_PASSING` is documented as
+"Only a LOCAL A clears it: remote servers cap at B (egress unverified)".
+
+So if D1's demo agents declare https endpoints (E1 on a deploy URL), the hired agent grades B, and
+"gated on grade A" is not a line this build can say truthfully. Three ways out:
+
+1. **Set the gate's minGrade to B and say the accurate line.** `01-INTERFACES` §4 already freezes
+   `minGrade` default `'B'`, so this is zero code. The three demo rows still work: the injection
+   agent grades F and is blocked, the clean agent grades B and is hired, the drifted agent is
+   refused on its fingerprint regardless of letter. The caveat becomes part of the pitch: a remote
+   target's egress and canary behavior cannot be verified, and we say so on screen instead of
+   showing an A we did not earn.
+2. **Ship E1 as an npm package and grade it over stdio under Docker**, where C-02 and C-03 both run
+   and A is reachable. Costs packaging work, a Docker daemon on the stage machine, and an agent card
+   whose declared surface is a package ref rather than a URL, which A2's extraction and D1's cards
+   would both have to accept.
+3. Both: grade the local variant for the A row, the remote one for everything else. Most work, most
+   moving parts on stage.
+
+Recommendation: option 1. It is free, it is true, and the disclosed-limits framing is the project's
+own thesis rather than a concession.
 
 ### Open, for the operator
 

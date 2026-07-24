@@ -61,6 +61,16 @@ const ITEMS: ItemSpec[] = [
     note: 'set once A4 deploys; every registry read fails closed until then',
   },
   { name: ENV.validationRegistryChainId, tier: 'expected', note: 'the chain A4 deployed to' },
+  {
+    name: ENV.fixtureDeployerPrivateKey,
+    tier: 'expected',
+    note: 'deploys the staged fixtures; a shared throwaway key by design, unlike the validator key',
+  },
+  {
+    name: ENV.fixtureDeployerAddress,
+    tier: 'expected',
+    note: 'the account the staged fixture deploys are attributed to',
+  },
 ]
 
 export function doctor(): DoctorReport {

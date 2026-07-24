@@ -1,10 +1,13 @@
 import type { Metadata } from "next";
 import { Container } from "../components/container";
+import { PendingQueue } from "../components/firewall/pending-queue";
+import { UnseenSlot } from "../components/firewall/unseen-slot";
 import { HiringFloor } from "../components/floor/hiring-floor";
 import { Panel } from "../components/panel";
 import { EmptyState } from "../components/states";
 import { PaymentSummary } from "../components/transcript/payment-summary";
 import { TranscriptPanel } from "../components/transcript/transcript-panel";
+import { loadFirewallQueue } from "../lib/firewall";
 import { FLOOR_POLICY, loadFloor } from "../lib/floor";
 import { loadTranscript } from "../lib/transcript";
 
@@ -20,7 +23,11 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function ConsolePage() {
-  const [rows, events] = await Promise.all([loadFloor(), loadTranscript()]);
+  const [rows, events, queue] = await Promise.all([
+    loadFloor(),
+    loadTranscript(),
+    loadFirewallQueue(),
+  ]);
   return (
     <Container className="py-10 sm:py-12">
       <header className="max-w-[46rem]">
@@ -61,12 +68,15 @@ export default async function ConsolePage() {
           <PaymentSummary events={events} />
         </Panel>
 
-        {/* TODO-INTEGRATE: C3 mounts the firewall panel here, against Lane 2's txGuard (01-INTERFACES section 9). */}
-        <Panel eyebrow="beat 2" title="Firewall" status="not wired">
-          <EmptyState>
-            A pending transaction, the flags the simulation raised against it, and
-            the block and state the verdict is reproducible from.
-          </EmptyState>
+        <Panel
+          eyebrow="beat 2"
+          title="Firewall"
+          status={`${queue.length} checked`}
+        >
+          <PendingQueue items={queue} />
+          <div className="mt-4">
+            <UnseenSlot />
+          </div>
         </Panel>
 
         {/* TODO-INTEGRATE: receipt rendering, against Lane 1's B2 chain (01-INTERFACES section 5). */}
