@@ -23,6 +23,12 @@ export type FloorRow = {
   decision: GateDecision | null;
   error: RenderableError | null;
   pending: boolean;
+  /**
+   * How long this row's gate call took, in milliseconds. Rendered so the screen
+   * shows that the recheck ran now rather than at grading time. A row that reads
+   * its fingerprint result off the attestation would sit at zero forever.
+   */
+  recheckMs: number;
 };
 
 const CANDIDATES: { card: AgentCard; decision: GateDecision }[] = [
@@ -48,15 +54,23 @@ async function vetCandidate(candidate: {
   decision: GateDecision;
 }): Promise<FloorRow> {
   const base = { agentId: candidate.card.agentId, card: candidate.card };
+  const startedAt = performance.now();
   try {
     const decision = await Promise.resolve(candidate.decision);
-    return { ...base, decision, error: null, pending: false };
+    return {
+      ...base,
+      decision,
+      error: null,
+      pending: false,
+      recheckMs: Math.round(performance.now() - startedAt),
+    };
   } catch (thrown) {
     return {
       ...base,
       decision: null,
       error: toRenderableError(thrown),
       pending: false,
+      recheckMs: Math.round(performance.now() - startedAt),
     };
   }
 }

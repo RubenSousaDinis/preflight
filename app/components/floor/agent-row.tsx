@@ -182,6 +182,9 @@ export function AgentRow({ row }: { row: FloorRow }) {
       </Cell>
       <Cell label="live recheck">
         <RecheckValue match={decision.fingerprintMatch} />
+        <p className="mt-1 font-data text-[0.68rem] text-ink/45">
+          {row.recheckMs > 0 ? `ran in ${row.recheckMs} ms` : "ran in under 1 ms"}
+        </p>
       </Cell>
       <Cell label="verdict">
         <VerdictValue verdict={decision.verdict} />
