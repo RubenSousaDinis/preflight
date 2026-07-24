@@ -9,8 +9,7 @@ import { DemoTargetLine } from "../components/floor/demo-target-line";
 import { HiringFloor } from "../components/floor/hiring-floor";
 import { Panel } from "../components/panel";
 import { ReceiptChain } from "../components/receipts/receipt-chain";
-import { PaymentSummary } from "../components/transcript/payment-summary";
-import { TranscriptPanel } from "../components/transcript/transcript-panel";
+import { LiveRun } from "../components/transcript/live-run";
 import { loadFirewallQueue } from "../lib/firewall";
 import { FLOOR_POLICY, loadFloor } from "../lib/floor";
 import { readDemoTarget } from "../lib/demo-target";
@@ -84,19 +83,18 @@ export default async function ConsolePage() {
         <Panel
           eyebrow="beat 1"
           title="Run transcript"
-          status={`${events.length} events`}
+          status="driven live"
         >
-          <TranscriptPanel events={events} />
-          <p className="mt-3 max-w-[46rem] text-[0.85rem] leading-snug text-ink/60">
+          <LiveRun
+            fixtureEvents={events}
+            defaultCandidates={rows.map((row) => row.agentId).join(" ")}
+          />
+          <p className="mt-4 max-w-[46rem] text-[0.85rem] leading-snug text-ink/60">
             The agent that turns hostile here passed the gate on its letter and on
             its live fingerprint, both. Its hostile turn fires on a condition that
             was not present at grading time, so what stops it is the boundary
             around the run rather than the grade in front of it.
           </p>
-        </Panel>
-
-        <Panel eyebrow="beat 1" title="Budget">
-          <PaymentSummary events={events} />
         </Panel>
 
         <Panel
