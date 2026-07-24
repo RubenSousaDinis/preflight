@@ -1,11 +1,24 @@
 "use server";
 
 import { getAddress, isAddress } from "viem";
-import { txGuard } from "@/src/gates/tx/txguard";
+import { DETECTORS, txGuard } from "@/src/gates/tx/txguard";
 import type { Address, Hex, PendingTx } from "@/src/shared";
 import { toRenderableError, type RenderableError } from "./errors";
 import { chainLabel } from "./flags";
 import { toVerdictView, type VerdictView } from "./verdict-view";
+
+/**
+ * What the run was actually able to check.
+ *
+ * Both of these change what an ALLOW means, and neither is readable off a TxVerdict,
+ * so they travel beside it. Without them an ALLOW produced by an empty detector set
+ * is indistinguishable on screen from one produced by four checks that found
+ * nothing, and that is the single most expensive thing this panel could imply.
+ */
+export type RunScope = {
+  detectorCount: number;
+  calldataWasEmpty: boolean;
+};
 
 export type UnseenResult =
   | { kind: "invalid"; message: string }
@@ -20,6 +33,7 @@ export type UnseenResult =
       address: string;
       chainLabel: string;
       verdict: VerdictView;
+      scope: RunScope;
     };
 
 /**
@@ -86,6 +100,10 @@ export async function checkUnseenAddress(
       address: to,
       chainLabel: chainLabel(chainId),
       verdict: toVerdictView(verdict),
+      scope: {
+        detectorCount: DETECTORS.length,
+        calldataWasEmpty: calldata === "0x",
+      },
     };
   } catch (thrown) {
     return {
