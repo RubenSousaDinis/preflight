@@ -1,14 +1,5 @@
 import type { ReactNode } from "react";
-import type { PreflightError } from "@/src/shared";
-
-/**
- * What the error state needs off a typed failure. Structural rather than the class
- * itself, so a serialized error crossing the server boundary still renders.
- */
-export type RenderableError = Pick<
-  PreflightError,
-  "code" | "reason" | "retryable"
->;
+import type { RenderableError } from "../lib/errors";
 
 /*
   The three states a live demo actually lands on, decided once here so C2, C3 and C4
@@ -32,6 +23,21 @@ export function EmptyState({ children }: { children: ReactNode }) {
   );
 }
 
+/** The in-flight marker, also used inline inside a table cell. */
+export function PulseDots() {
+  return (
+    <span aria-hidden="true" className="flex gap-1">
+      {[0, 1, 2].map((index) => (
+        <span
+          key={index}
+          className="block h-1.5 w-1.5 animate-pulse bg-accent"
+          style={{ animationDelay: `${index * 180}ms` }}
+        />
+      ))}
+    </span>
+  );
+}
+
 /**
  * Waiting on something named. `awaiting` is the thing being waited on, in the
  * operator's words: "the fork at head", "tools/list, page 2 of 3".
@@ -40,15 +46,7 @@ export function LoadingState({ awaiting }: { awaiting: string }) {
   return (
     <div className={FRAME} role="status" aria-live="polite">
       <p className={`${LABEL} flex items-center gap-2 text-ink/50`}>
-        <span aria-hidden="true" className="flex gap-1">
-          {[0, 1, 2].map((index) => (
-            <span
-              key={index}
-              className="block h-1.5 w-1.5 animate-pulse bg-accent"
-              style={{ animationDelay: `${index * 180}ms` }}
-            />
-          ))}
-        </span>
+        <PulseDots />
         awaiting {awaiting}
       </p>
     </div>
