@@ -53,7 +53,7 @@ export function LoadingState({ awaiting }: { awaiting: string }) {
 export function ErrorState({ error }: { error: RenderableError }) {
   return (
     <div className="border border-rule border-l-2 border-l-grade-f bg-band/50 px-4 py-4">
-      <p className={`${LABEL} text-grade-f`}>error · {error.code}</p>
+      <p className={`${LABEL} text-grade-f`}>error / {error.code}</p>
       <p className="mt-2 text-ink">{error.reason}</p>
       <p className="mt-2 font-data text-[0.72rem] text-ink/60">
         {error.retryable

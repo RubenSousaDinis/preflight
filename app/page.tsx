@@ -7,7 +7,7 @@ export default function ProductPage() {
     <Container className="py-10 sm:py-14">
       <section className="max-w-[46rem]">
         <p className="font-data text-[0.68rem] uppercase tracking-[0.16em] text-accent">
-          agent boundary · transaction boundary
+          agent boundary / transaction boundary
         </p>
         <h1 className="mt-3 font-display text-[2rem] font-semibold leading-[1.08] tracking-[-0.015em] sm:text-[2.6rem]">
           An agent about to act, checked before it acts.
