@@ -34,8 +34,30 @@ rpc probe
 ```
 
 Every RPC answered and reported the chain id it was configured as, so none of the three is pointing
-at the wrong network. `VALIDATOR_ADDRESS` is a real gap, not a naming choice: B1 checks who wrote a
-validation record on a read path that must not hold the private key.
+at the wrong network. `VALIDATOR_ADDRESS` was a real gap at that point, not a naming choice: B1 checks
+who wrote a validation record on a read path that must not hold the private key.
+
+### Second run, operator machine with the full environment, 2026-07-25
+
+Reported **every required item resolved**, 15 items. The only unset values were the two optional
+explorer keys (Sourcify is the primary verified-source path and needs no key) and the two
+`VALIDATION_REGISTRY_*` values, which wait on A4 by design, so every registry read fails closed until
+it lands. That is the correct state, not a gap.
+
+Provisioned and live-verified between the two runs:
+
+| Item | Value | Verified how |
+|---|---|---|
+| `VALIDATOR_ADDRESS` | `0xCFad8f21B8469790ADc3922814d1df4E08ECF1c8` | set in the environment; the read path now has a validator to compare against |
+| `HEDERA_TESTNET_ACCOUNT_ID` | `0.0.9695674`, ECDSA | confirmed on the mirror node, holding 1000 HBAR |
+| `ZEROG_RPC_URL` | `https://evmrpc-testnet.0g.ai` | answered with chain id 16602 |
+| `ZEROG_INDEXER_URL` | `https://indexer-storage-testnet-turbo.0g.ai` | answered a JSON-RPC probe |
+| `FIXTURE_DEPLOYER_ADDRESS` | `0x38E2F18Bc9c50Dc43B93A8A4BcEF518A0B897bA2` | set in the environment; Base Sepolia funding still pending at the faucet |
+
+The fixture deployer key and address joined the config surface and the doctor checklist as expected
+tier, so the lane that deploys the staged fixtures reads them from config rather than naming the
+variable at a call site. The key sits in the shared environment deliberately: it holds faucet funds on
+a testnet, which is not the custody rule the validator and payer keys follow.
 
 ## A2, AgentCard resolution
 
