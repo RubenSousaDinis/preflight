@@ -33,7 +33,9 @@ export function UnseenSlot() {
         </div>
         <p className="mt-1 text-[0.88rem] leading-snug text-ink/70">
           Paste an address nobody here wrote. It runs through the same four
-          checks, on the same pipeline, as everything above.
+          checks, on the same pipeline, as everything above. The code is
+          fingerprinted and compared to its graded version before anything is
+          simulated, so an address on its own already answers something.
         </p>
       </header>
 
@@ -75,6 +77,33 @@ export function UnseenSlot() {
           >
             {isPending ? "checking" : "check it"}
           </button>
+
+          <div className="flex w-full flex-wrap gap-3">
+            <label className="min-w-0 flex-1">
+              <span className="block font-data text-[0.64rem] uppercase tracking-[0.16em] text-ink/50">
+                calldata, optional
+              </span>
+              <input
+                name="calldata"
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="0x"
+                className="mt-1 w-full border border-rule bg-paper px-3 py-2 font-data text-[0.85rem] text-ink outline-none focus:border-accent"
+              />
+            </label>
+            <label className="min-w-0 flex-1">
+              <span className="block font-data text-[0.64rem] uppercase tracking-[0.16em] text-ink/50">
+                sender, optional
+              </span>
+              <input
+                name="sender"
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="defaults to the zero address"
+                className="mt-1 w-full border border-rule bg-paper px-3 py-2 font-data text-[0.85rem] text-ink outline-none focus:border-accent"
+              />
+            </label>
+          </div>
         </form>
 
         <div className="mt-4">
