@@ -13,7 +13,7 @@ import { ErrorState, PulseDots } from "../states";
   one is what a judge repeats to another judge.
 */
 export const ROW_GRID =
-  "grid grid-cols-1 gap-x-5 gap-y-3 md:grid-cols-[minmax(9rem,1fr)_7rem_9.5rem_7rem_minmax(0,2.2fr)]";
+  "grid grid-cols-1 gap-x-5 gap-y-3 md:grid-cols-[minmax(9rem,1fr)_7rem_10.5rem_7rem_minmax(0,2.2fr)]";
 
 const CELL_LABEL =
   "mb-1 font-data text-[0.6rem] uppercase tracking-[0.16em] text-ink/45 md:hidden";
@@ -64,7 +64,7 @@ function GradeValue({
   return (
     <span className="inline-flex items-baseline gap-2">
       <span
-        className="font-display text-[1.6rem] leading-none font-semibold"
+        className="font-display text-[1.85rem] leading-none font-semibold"
         style={{ color: gradeColor(grade) }}
       >
         {grade}
@@ -84,20 +84,20 @@ function GradeValue({
 function RecheckValue({ match }: { match: boolean | null }) {
   if (match === true) {
     return (
-      <span className="font-data text-[0.8rem] text-accent">
+      <span className="font-data text-[0.88rem] text-accent">
         matches baseline
       </span>
     );
   }
   if (match === false) {
     return (
-      <span className="font-data text-[0.8rem] text-grade-f">
+      <span className="font-data text-[0.88rem] text-grade-f">
         moved since grading
       </span>
     );
   }
   return (
-    <span className="font-data text-[0.8rem] text-grade-f">
+    <span className="font-data text-[0.88rem] text-grade-f">
       could not be checked
     </span>
   );
@@ -107,7 +107,7 @@ function VerdictValue({ verdict }: { verdict: "HIRE" | "REFUSE" }) {
   const refused = verdict === "REFUSE";
   return (
     <span
-      className={`inline-block border px-2.5 py-1 font-data text-[0.8rem] font-medium tracking-[0.1em] ${
+      className={`inline-block border px-2.5 py-1 font-data text-[0.88rem] font-medium tracking-[0.1em] ${
         refused ? "border-grade-f text-grade-f" : "border-accent text-accent"
       }`}
     >
@@ -119,7 +119,7 @@ function VerdictValue({ verdict }: { verdict: "HIRE" | "REFUSE" }) {
 function AgentName({ row }: { row: FloorRow }) {
   return (
     <div className="min-w-0">
-      <p className="font-display text-[1.05rem] leading-tight font-semibold break-words">
+      <p className="font-display text-[1.12rem] leading-tight font-semibold break-words">
         {row.card.name || row.agentId}
       </p>
       <p className="mt-0.5 font-data text-[0.7rem] break-all text-ink/50">
@@ -190,7 +190,7 @@ export function AgentRow({ row }: { row: FloorRow }) {
         <VerdictValue verdict={decision.verdict} />
       </Cell>
       <Cell label="reason">
-        <p className="text-[0.95rem] leading-snug text-ink">
+        <p className="text-[1.075rem] leading-snug text-ink">
           {decision.reason}
         </p>
         {decision.record ? (

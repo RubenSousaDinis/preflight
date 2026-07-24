@@ -30,7 +30,7 @@ function Badge({ label, tone }: { label: string; tone: Tone }) {
 }
 
 function Line({ children }: { children: ReactNode }) {
-  return <p className="text-[0.92rem] leading-snug text-ink/85">{children}</p>;
+  return <p className="text-[1rem] leading-snug text-ink/85">{children}</p>;
 }
 
 function Mono({ children }: { children: ReactNode }) {
