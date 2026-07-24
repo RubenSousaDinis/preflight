@@ -19,7 +19,7 @@ export interface ResolvedAgent {
   /** The block the tokenURI was read at, so the resolution can be re-derived. */
   block: bigint
   chainId: number
-  /** Where the bytes came from, which for ipfs is the gateway rather than the URI. */
+  /** Where the bytes came from. `data:` for an inline card. */
   fetchedFrom: string
   bytes: number
 }
