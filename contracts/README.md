@@ -78,6 +78,25 @@ detector works. Deployed on Base Sepolia by `script/deploy-fixtures.sh`, recorde
 `VaultV1` and `VaultV2` are the two implementations behind the proxy, `DrainableToken` is the token
 the drainer operates on, and `UnverifiedSink` is the address value ends up at.
 
+### The staged market
+
+The honeypot check is a two-leg trade, and Base Sepolia has no liquidity to trade against, so a
+sell leg there reverts for lack of a counterparty and every token looks like a trap. `HoneypotToken`
+therefore ships with a market: two pairs created against the chain's own live `UniswapV2Factory` at
+`0x7Ae58f10…` and seeded with 100,000 of each side, deployed by `script/deploy-market.sh`.
+
+| Contract | Role |
+|---|---|
+| `HoneypotToken` | Buys work, and a transfer into the pool reverts, which is what selling is |
+| `CleanToken` | The same shape with a working exit, on an identically seeded pair |
+| `QuoteToken` | The asset both pairs quote against, standing in for WETH on a chain with no depth |
+| `MockRouter` | A one call buy, so the pending transaction under test is what a person signs |
+
+Nobody is exempt from the honeypot's rule, including the deployer. Seeding works because the pool
+is armed by `setPool` after liquidity is provided. An exemption would be a hole in the fixture: it
+would let the account most likely to be used as a test buyer sell out of the trap, which is exactly
+the false pass it exists to catch.
+
 **Verified status is part of the fixture.** Everything above is verified on Sourcify with an
 `exact_match`, except `UnverifiedSink`, whose source is deliberately never submitted. B5d reads
 that status as a fact about the chain, so the control has to be the thing the bad callee is not.

@@ -10,8 +10,9 @@
 import type { Detector } from '../../../shared/types.ts'
 import { badCallee } from './bad-callee.ts'
 import { drainerApproval } from './drainer-approval.ts'
+import { honeypot } from './honeypot.ts'
 import { ownerBackdoor } from './owner-backdoor.ts'
 
-export const DETECTORS: Detector[] = [drainerApproval, ownerBackdoor, badCallee]
+export const DETECTORS: Detector[] = [drainerApproval, ownerBackdoor, badCallee, honeypot]
 
-export { badCallee, drainerApproval, ownerBackdoor }
+export { badCallee, drainerApproval, honeypot, ownerBackdoor }

@@ -28,6 +28,16 @@ export interface FixtureSet {
     cleanControl: Address
     injectionFixture: Address
   }
+  /** The staged market (D3 step 7), against the chain's own UniswapV2Factory. */
+  market: {
+    factory: Address
+    router: Address
+    quoteToken: Address
+    honeypotToken: Address
+    honeypotPair: Address
+    cleanToken: Address
+    cleanPair: Address
+  }
 }
 
 const RECORD = join(
@@ -52,5 +62,8 @@ export function baseSepoliaFixtures(): FixtureSet {
     fixtures: Object.fromEntries(
       Object.entries(record.fixtures).map(([name, address]) => [name, getAddress(address)]),
     ) as FixtureSet['fixtures'],
+    market: Object.fromEntries(
+      Object.entries(record.market).map(([name, address]) => [name, getAddress(address)]),
+    ) as FixtureSet['market'],
   }
 }

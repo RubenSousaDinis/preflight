@@ -107,6 +107,14 @@ function terminate(child: ChildProcess): void {
  */
 export interface ForkHandle extends Fork {
   readonly block: bigint
+  /**
+   * A read only call against the fork's current state.
+   *
+   * Needed by the two-leg detector: reserves have to be read from the state the buy leg left
+   * behind, not from the chain, or the sell is quoted against a market that no longer exists.
+   * Additive, so anything typed against the frozen `Fork` still accepts this.
+   */
+  call(to: Address, data: Hex): Promise<Hex>
 }
 
 /**
@@ -198,6 +206,9 @@ export async function forkAt(chainId: ChainId, block?: bigint): Promise<ForkHand
     },
     async storageAt(address: Address, slot: Hex): Promise<Hex> {
       return rpc<Hex>(url, 'eth_getStorageAt', [getAddress(address), slot, 'latest'])
+    },
+    async call(to: Address, data: Hex): Promise<Hex> {
+      return rpc<Hex>(url, 'eth_call', [{ to: getAddress(to), data }, 'latest'])
     },
     async release(): Promise<void> {
       terminate(child)

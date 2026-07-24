@@ -176,3 +176,22 @@ export function storageWritesFrom(prestate: PrestateDiff): { address: Address; s
 export function revertedFrom(root: CallFrame): boolean {
   return root.error !== undefined
 }
+
+/**
+ * Why it reverted, in the contract's own words where it gave any.
+ *
+ * A block that quotes the revert reason survives a judge asking "how do you know". One that says
+ * "it failed" does not, so the reason is carried out of the trace rather than summarized away.
+ */
+export function revertReasonFrom(root: CallFrame): string | null {
+  const walk = (frame: CallFrame): string | null => {
+    for (const child of frame.calls ?? []) {
+      const nested = walk(child)
+      if (nested !== null) return nested
+    }
+    const stated = (frame as { revertReason?: string }).revertReason
+    if (typeof stated === 'string' && stated.length > 0) return stated
+    return frame.error ?? null
+  }
+  return walk(root)
+}
