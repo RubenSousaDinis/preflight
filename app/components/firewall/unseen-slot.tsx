@@ -1,7 +1,11 @@
 "use client";
 
 import { useActionState } from "react";
-import { checkUnseenAddress, type UnseenResult } from "../../lib/actions";
+import {
+  checkUnseenAddress,
+  type RunScope,
+  type UnseenResult,
+} from "../../lib/actions";
 import { UNSEEN_CHAINS } from "../../lib/flags";
 import { ErrorState, PulseDots } from "../states";
 import { VerdictCard } from "./verdict-card";
@@ -14,6 +18,40 @@ import { VerdictCard } from "./verdict-card";
   pipeline, and a slot that appeared only once the fixtures were done would look
   staged, because it would be.
 */
+/**
+ * What this particular run could and could not check.
+ *
+ * An ALLOW is only as strong as the set of checks that ran against it. When no
+ * detector is registered, or when the call carried no data and therefore did
+ * nothing, the verdict is still true and still reproducible, and it answers a much
+ * narrower question than the word ALLOW suggests. Saying so on the card is cheaper
+ * than having it asked from the floor.
+ */
+function ScopeNotes({ scope }: { scope: RunScope }) {
+  const notes: string[] = [];
+  if (scope.detectorCount === 0) {
+    notes.push(
+      "No detector is registered on this build yet, so no red flag could fire. An allow here means the checks have not landed, not that the call is clean.",
+    );
+  }
+  if (scope.calldataWasEmpty) {
+    notes.push(
+      "Checked with empty calldata, which is a call carrying no data. Most contracts reject it, so this answers what that call does and not what the contract does. Paste the calldata of the call you care about to check that one.",
+    );
+  }
+  if (notes.length === 0) return null;
+
+  return (
+    <ul className="space-y-2 border border-rule border-l-2 border-l-grade-c bg-band/40 px-4 py-3 sm:px-5">
+      {notes.map((note) => (
+        <li key={note} className="text-[0.85rem] leading-snug text-ink/80">
+          {note}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function UnseenSlot() {
   const [result, formAction, isPending] = useActionState<
     UnseenResult | null,
@@ -138,6 +176,7 @@ export function UnseenSlot() {
               <p className="font-data text-[0.74rem] break-all text-ink/55">
                 {result.address} on {result.chainLabel}
               </p>
+              <ScopeNotes scope={result.scope} />
               <VerdictCard verdict={result.verdict} />
             </div>
           ) : null}
