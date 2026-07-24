@@ -12,7 +12,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { encodeFunctionData, parseAbi } from 'viem'
 import { SimulationError } from '../../shared/errors.ts'
-import type { Address, Hex, PendingTx } from '../../shared/types.ts'
+import type { Address, PendingTx } from '../../shared/types.ts'
 import { forkAt, simulate } from './fork.ts'
 import { storageWritesFrom, type PrestateDiff } from './trace.ts'
 
