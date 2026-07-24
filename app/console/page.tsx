@@ -3,6 +3,7 @@ import { Container } from "../components/container";
 import { HiringFloor } from "../components/floor/hiring-floor";
 import { Panel } from "../components/panel";
 import { EmptyState } from "../components/states";
+import { PaymentSummary } from "../components/transcript/payment-summary";
 import { TranscriptPanel } from "../components/transcript/transcript-panel";
 import { FLOOR_POLICY, loadFloor } from "../lib/floor";
 import { loadTranscript } from "../lib/transcript";
@@ -54,6 +55,10 @@ export default async function ConsolePage() {
           status={`${events.length} events`}
         >
           <TranscriptPanel events={events} />
+        </Panel>
+
+        <Panel eyebrow="beat 1" title="Budget">
+          <PaymentSummary events={events} />
         </Panel>
 
         {/* TODO-INTEGRATE: C3 mounts the firewall panel here, against Lane 2's txGuard (01-INTERFACES section 9). */}
