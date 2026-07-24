@@ -12,5 +12,14 @@
     "unverifiedSink": "0xc7425381Df0c4d62aFa51aef748655BE72C542eD",
     "cleanControl": "0xfd616991d7D0710258cC338c16A84Ebc7a09B8dC",
     "injectionFixture": "0xB21304F3eCFb78345473d3Aa4198a21C2CaAB740"
+  },
+  "market": {
+    "factory": "0x7ae58f10f7849ca6f5fb71b7f45cb416c9204b1e",
+    "router": "0x07810E2dBb03607B6E9830887EdDD03Fd78c28e2",
+    "quoteToken": "0x788830a5264397E8f02F0c790a579ABC3B3eCAE6",
+    "honeypotToken": "0x790CC437E064d785f289D2716154706da19199e3",
+    "honeypotPair": "0x984A4397226Fbe8c742907Ab1B354ADa75809529",
+    "cleanToken": "0x3FC2Bb308c3DC1B5812C4099064A141bcA436027",
+    "cleanPair": "0x693Aa308F5e867664C9c2ADA29877de935Bee1AA"
   }
 }
