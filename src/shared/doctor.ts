@@ -10,6 +10,7 @@
  */
 
 import { CHAINS, CHAIN_KEYS, ENV, optionalEnv, type ChainKey } from './config.ts'
+import { reasonOf } from './errors.ts'
 
 export type Tier = 'required' | 'expected' | 'optional'
 
@@ -153,5 +154,9 @@ async function main(): Promise<void> {
 
 const entry = process.argv[1] ?? ''
 if (entry.endsWith('doctor.ts') || entry.endsWith('doctor.js')) {
-  await main()
+  // Not a top-level await: the test runner transforms this module to CommonJS, where one fails.
+  main().catch((err: unknown) => {
+    console.error(reasonOf(err))
+    process.exitCode = 1
+  })
 }
