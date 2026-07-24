@@ -1,0 +1,16 @@
+{
+  "chainId": 84532,
+  "deployer": "0xCFad8f21B8469790ADc3922814d1df4E08ECF1c8",
+  "collector": "0x00000000000000000000000000000000BadC0de0",
+  "fixtures": {
+    "backdoorProxy": "0xB11bC5Bb8fD3000bebBB968bd65afd607F9801Da",
+    "vaultV1": "0x215Fd6636D7c9DB883690F79E84d2a4dB926E9Eb",
+    "vaultV2": "0xc2eB1dD7cC26da2166984603ed930059eCFF3615",
+    "drainerRouter": "0xbbB11049908dc4F72BC8F05Ea401862db168Bbe2",
+    "drainableToken": "0x7f53f01C30C1f868E40ECA0840493A0ea8057Df7",
+    "valueRouter": "0x4cDf5D44bEc6237f26C488F358FF2026701D4b69",
+    "unverifiedSink": "0xc7425381Df0c4d62aFa51aef748655BE72C542eD",
+    "cleanControl": "0xfd616991d7D0710258cC338c16A84Ebc7a09B8dC",
+    "injectionFixture": "0xB21304F3eCFb78345473d3Aa4198a21C2CaAB740"
+  }
+}
