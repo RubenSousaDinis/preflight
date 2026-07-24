@@ -57,7 +57,6 @@ const LOUPE_ABI = parseAbi([
   'function facets() view returns (Facet[])',
 ])
 
-const ZERO_WORD = `0x${'00'.repeat(32)}` as Hex
 
 /** `eip155:{chainId}:{checksummedAddress}`, per 02-DECISIONS section 4. */
 export function contractRef(chainId: ChainId, address: Address): ContractRef {
