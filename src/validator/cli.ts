@@ -10,8 +10,12 @@
  */
 
 import { isPreflightError, reasonOf } from '../shared/errors.ts'
+import type { AgentCard } from '../shared/types.ts'
 import { identityChainId } from './identity-registry.ts'
 import { resolveAgentDetailed } from './resolve-agent.ts'
+import { gradeAgent } from './grade-agent.ts'
+import { canonicalize } from './canonical.ts'
+import { methodologyVersion } from './methodology.ts'
 
 function flagValue(name: string): string | undefined {
   const index = process.argv.indexOf(`--${name}`)
@@ -47,10 +51,77 @@ async function scan(from: number, to: number, chainId: number): Promise<void> {
   }
 }
 
+/**
+ * Grades a card and prints the letter, the score, and both hashes.
+ *
+ * `--write <path>` drops the evidence bundle next to it, which is what the round-trip check and A3b
+ * read. The bundle is written as canonical bytes, so the file on disk is the thing that was hashed.
+ */
+async function gradeCard(card: AgentCard): Promise<boolean> {
+  try {
+    const started = Date.now()
+    const result = await gradeAgent(card, {
+      onProgress: (endpoint, done, total, label) => {
+        console.log(`  [${done}/${total}] ${label} (${endpoint})`)
+      },
+    })
+    console.log(`grade         ${result.grade}  score ${result.score}`)
+    console.log(`methodology   ${result.methodologyVersion}`)
+    console.log(`engine        ${result.bundle.engineVersion}`)
+    console.log(`evidenceHash  ${result.evidenceHash}`)
+    console.log(`fingerprint   ${result.toolFingerprint}`)
+    console.log(`endpoints     ${result.bundle.endpoints.map((e) => `${e.endpoint} ${e.grade}`).join(', ')}`)
+    console.log(`tools         ${result.bundle.toolSurface.map((s) => s.toolCount).join(', ')}`)
+    console.log(`ranAt         ${result.bundle.ranAt}  (${Math.round((Date.now() - started) / 1000)}s)`)
+
+    const out = flagValue('write')
+    if (out !== undefined) {
+      const { writeFileSync } = await import('node:fs')
+      writeFileSync(out, canonicalize(result.bundle))
+      console.log(`bundle        ${out} (canonical bytes)`)
+    }
+    return true
+  } catch (err) {
+    const code = isPreflightError(err) ? err.code : 'UNTYPED'
+    console.log(`refused [${code}] ${reasonOf(err)}`)
+    return false
+  }
+}
+
+/** A card standing in for an endpoint nobody has registered yet, for grading a bare URL. */
+function cardForEndpoint(endpoint: string): AgentCard {
+  return {
+    agentId: `unregistered:${endpoint}`,
+    name: '',
+    mcpEndpoints: [endpoint],
+    skillRefs: [],
+    raw: { name: '', services: [{ name: 'MCP', endpoint }] },
+    tokenURI: endpoint,
+  }
+}
+
 async function main(): Promise<void> {
   const [command, ...rest] = process.argv.slice(2)
   const chainId = Number(flagValue('chain') ?? identityChainId())
 
+  if (command === 'methodology') {
+    console.log(methodologyVersion())
+    return
+  }
+  if (command === 'grade-endpoint') {
+    process.exitCode = (await gradeCard(cardForEndpoint(rest[0]))) ? 0 : 1
+    return
+  }
+  if (command === 'grade') {
+    try {
+      const resolved = await resolveAgentDetailed(rest[0], { chainId })
+      process.exitCode = (await gradeCard(resolved.card)) ? 0 : 1
+    } catch (err) {
+      console.log(`refused ${reasonOf(err)}`)
+      process.exitCode = 1
+    }
+    return
+  }
   if (command === 'resolve') {
     const ok = await resolveOne(rest[0], chainId)
     process.exitCode = ok ? 0 : 1
@@ -60,7 +131,16 @@ async function main(): Promise<void> {
     await scan(Number(rest[0] ?? 1), Number(rest[1] ?? 20), chainId)
     return
   }
-  console.log('usage: cli.ts resolve <agentId> [--chain <id>] | cli.ts scan <from> <to> [--chain <id>]')
+  console.log(
+    [
+      'usage:',
+      '  cli.ts resolve <agentId> [--chain <id>]',
+      '  cli.ts scan <from> <to> [--chain <id>]',
+      '  cli.ts grade <agentId> [--chain <id>] [--write <path>]',
+      '  cli.ts grade-endpoint <https url> [--write <path>]',
+      '  cli.ts methodology',
+    ].join('\n'),
+  )
   process.exitCode = 1
 }
 
