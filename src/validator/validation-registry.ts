@@ -35,7 +35,7 @@ import {
 } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 
-import { ConfigError, PublishError, ValidationReadError } from '../shared/errors.ts'
+import { ConfigError, PublishError, ValidationReadError, oneLineReason } from '../shared/errors.ts'
 import {
   ENV,
   optionalEnv,
@@ -182,6 +182,8 @@ export interface ReadOptions {
    * has to say "expired" rather than "absent" in a refusal reason, and it applies the bound itself.
    */
   includeExpired?: boolean
+  /** Backoff between retries of a throttled call. Zero in tests, so they do not sleep. */
+  retryDelayMs?: number
 }
 
 /** A record plus the two values the registry has and 01-INTERFACES §3 does not name. */
@@ -202,14 +204,19 @@ async function readStatus(
   client: PublicClient,
   registry: Address,
   requestHash: Hex,
+  options: { retryDelayMs?: number } = {},
 ): Promise<RawStatus | null> {
   try {
-    const [validator, agentId, response, responseHash, tag, lastUpdate] = await client.readContract({
-      address: registry,
-      abi: VALIDATION_REGISTRY_ABI,
-      functionName: 'getValidationStatus',
-      args: [requestHash],
-    })
+    const [validator, agentId, response, responseHash, tag, lastUpdate] = await withThrottleRetry(
+      () =>
+        client.readContract({
+          address: registry,
+          abi: VALIDATION_REGISTRY_ABI,
+          functionName: 'getValidationStatus',
+          args: [requestHash],
+        }),
+      options,
+    )
     return {
       validatorAddress: getAddress(validator),
       agentId,
@@ -221,12 +228,14 @@ async function readStatus(
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     // The contract reverts with "unknown" for a hash it has never seen. That is absence, which is
-    // null. Anything else is an outage, and an outage must never be returned as an answer.
-    if (/unknown|revert/i.test(message)) return null
-    throw new ValidationReadError(`could not read validation status ${requestHash}`, {
-      retryable: true,
-      cause: err,
-    })
+    // null. Anything else is an outage, and an outage must never be returned as an answer. A throttle
+    // is checked first: "not available" is the limiter's phrasing, and reading it as absence would
+    // turn a rate limit into a missing record.
+    if (!isThrottle(err) && /unknown|revert/i.test(message)) return null
+    throw new ValidationReadError(
+      `could not read validation status ${requestHash}: ${oneLineReason(err)}`,
+      { retryable: true, cause: err },
+    )
   }
 }
 
@@ -254,22 +263,26 @@ export async function readValidation(
 
   let requestHashes: readonly Hex[]
   try {
-    requestHashes = (await client.readContract({
-      address: registry,
-      abi: VALIDATION_REGISTRY_ABI,
-      functionName: 'getAgentValidations',
-      args: [tokenId],
-    })) as readonly Hex[]
+    requestHashes = (await withThrottleRetry(
+      () =>
+        client.readContract({
+          address: registry,
+          abi: VALIDATION_REGISTRY_ABI,
+          functionName: 'getAgentValidations',
+          args: [tokenId],
+        }),
+      options,
+    )) as readonly Hex[]
   } catch (err) {
-    throw new ValidationReadError(`could not list validations for agent ${agentId}`, {
-      retryable: true,
-      cause: err,
-    })
+    throw new ValidationReadError(
+      `could not list validations for agent ${agentId}: ${oneLineReason(err)}`,
+      { retryable: true, cause: err },
+    )
   }
 
   let newest: { status: RawStatus; requestHash: Hex } | null = null
   for (const requestHash of requestHashes) {
-    const status = await readStatus(client, registry, requestHash)
+    const status = await readStatus(client, registry, requestHash, options)
     if (status === null) continue
     if (status.validatorAddress !== expected) continue
     // A response always carries the evidence hash. Testing the score instead would read every grade F
@@ -328,16 +341,20 @@ export async function readForeignValidators(
   const expected = getAddress(ours ?? validatorAddress())
   const client = publicClientFor(chainId, options.client)
 
-  const requestHashes = (await client.readContract({
-    address: registry,
-    abi: VALIDATION_REGISTRY_ABI,
-    functionName: 'getAgentValidations',
-    args: [toTokenId(agentId)],
-  })) as readonly Hex[]
+  const requestHashes = (await withThrottleRetry(
+    () =>
+      client.readContract({
+        address: registry,
+        abi: VALIDATION_REGISTRY_ABI,
+        functionName: 'getAgentValidations',
+        args: [toTokenId(agentId)],
+      }),
+    options,
+  )) as readonly Hex[]
 
   const found = new Set<Address>()
   for (const requestHash of requestHashes) {
-    const status = await readStatus(client, registry, requestHash)
+    const status = await readStatus(client, registry, requestHash, options)
     if (status === null) continue
     if (status.responseHash === ZERO_HASH) continue
     if (status.validatorAddress !== expected) found.add(status.validatorAddress)
@@ -360,13 +377,123 @@ const VALIDATION_RESPONSE_EVENT = {
 } as const
 
 /**
- * How wide a single `eth_getLogs` window may be.
+ * How wide a single `eth_getLogs` window may be, widest first.
  *
- * Measured against the configured Base Sepolia endpoint on 2026-07-25: a 1000 block window answered, a
- * 10000 block window and `fromBlock: 'earliest'` both came back "Requested resource not available".
- * So the search is chunked, and this stays under the observed cap with margin.
+ * An earlier reading of the same endpoint took "Requested resource not available" on a 10000 block
+ * window to mean the window was too wide, and chunked to 900 blocks to stay under it. That error is
+ * the throttle, not a range refusal: re-measured on 2026-07-25 against the same Base Sepolia
+ * endpoint, a 100,000 block window answered in 630ms, while walking the same 90,000 blocks in 900
+ * block windows took 15,007ms across 100 calls. The narrow window was therefore not avoiding the
+ * limiter, it was feeding it, and the gate that runs this read on every poll of the rug pull beat
+ * was refusing on a rate limit rather than on anything about the agent.
+ *
+ * How wide a window a node will serve is a fact about the provider and not about the chain, so it is
+ * asked for wide and narrowed only when a provider actually says no. The last rung is the old width,
+ * which is known to be served.
  */
+export const LOG_WINDOW_LADDER: readonly bigint[] = [50_000n, 10_000n, 2_000n, 900n]
+
+/** Kept as the narrowest rung's name, since it is the width every provider measured so far serves. */
 export const LOG_CHUNK_BLOCKS = 900n
+
+/**
+ * A throttle is not an answer about an agent, so it is asked again rather than reported.
+ *
+ * Bounded on purpose: the retries run out, and when they do the read throws and the gate refuses.
+ * There is no path here where waiting long enough turns into permission.
+ */
+export const RPC_RETRY_ATTEMPTS = 4
+export const RPC_RETRY_BASE_MS = 400
+
+/**
+ * viem retries -1, -32005, -32603 and 429, and this endpoint throttles with -32002, which is not on
+ * that list. Reading the whole cause chain because the code the transport reports is wrapped by
+ * `readContract` and `getLogs` before a caller ever sees it.
+ */
+function matchesErrorChain(err: unknown, codes: ReadonlySet<number>, text: RegExp): boolean {
+  let current: unknown = err
+  for (let depth = 0; current !== undefined && current !== null && depth < 8; depth += 1) {
+    const candidate = current as { code?: unknown; message?: unknown; cause?: unknown }
+    if (typeof candidate.code === 'number' && codes.has(candidate.code)) return true
+    if (typeof candidate.message === 'string' && text.test(candidate.message)) return true
+    current = candidate.cause
+  }
+  return false
+}
+
+const THROTTLE_CODES = new Set([-32002, -32005, 429])
+const THROTTLE_TEXT = /rate limit|too many requests|requested resource not available/i
+
+function isThrottle(err: unknown): boolean {
+  return matchesErrorChain(err, THROTTLE_CODES, THROTTLE_TEXT)
+}
+
+/** Providers phrase a refused range in their own words, so the shapes seen in the wild are listed. */
+const RANGE_TEXT =
+  /block range|range is too|exceeds max|too many results|query returned more than|response size exceeded|limited to \d+ blocks/i
+
+function isRangeRefusal(err: unknown): boolean {
+  return matchesErrorChain(err, new Set<number>(), RANGE_TEXT)
+}
+
+function pause(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/** One RPC call, retried while the endpoint is throttling and never past the bound. */
+async function withThrottleRetry<T>(
+  call: () => Promise<T>,
+  options: { retryDelayMs?: number } = {},
+): Promise<T> {
+  const base = options.retryDelayMs ?? RPC_RETRY_BASE_MS
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await call()
+    } catch (err) {
+      if (!isThrottle(err) || attempt >= RPC_RETRY_ATTEMPTS) throw err
+      await pause(base * 2 ** attempt)
+    }
+  }
+}
+
+/**
+ * Walk a block range newest first, one `getLogs` window at a time.
+ *
+ * The width starts at the top of the ladder and steps down when a provider refuses the range, so the
+ * wide default still reads a node that caps it. A throttle is retried at the current width, since
+ * narrowing would answer a rate limit with more calls.
+ *
+ * `onLogs` returning true stops the walk, which is how a caller that only wants the newest match
+ * avoids reading the whole history.
+ */
+async function walkLogWindows(
+  head: bigint,
+  floor: bigint,
+  read: (fromBlock: bigint, toBlock: bigint) => Promise<unknown[]>,
+  onLogs: (logs: unknown[]) => boolean,
+  options: { retryDelayMs?: number } = {},
+): Promise<void> {
+  let rung = 0
+  let toBlock = head
+  while (toBlock >= floor) {
+    let width = LOG_WINDOW_LADDER[rung]!
+    let fromBlock = toBlock > floor + width ? toBlock - width : floor
+    for (;;) {
+      try {
+        const logs = await withThrottleRetry(() => read(fromBlock, toBlock), options)
+        if (onLogs(logs)) return
+        break
+      } catch (err) {
+        if (!isRangeRefusal(err) || rung >= LOG_WINDOW_LADDER.length - 1) throw err
+        rung += 1
+        width = LOG_WINDOW_LADDER[rung]!
+        fromBlock = toBlock > floor + width ? toBlock - width : floor
+      }
+    }
+    if (fromBlock === floor) break
+    toBlock = fromBlock - 1n
+  }
+}
 
 /** About two days of Base blocks, which is longer than the event and bounded. */
 export const DEFAULT_LOG_LOOKBACK_BLOCKS = 90_000n
@@ -398,12 +525,12 @@ export async function readResponseEvent(
 
   let head: bigint
   try {
-    head = await client.getBlockNumber()
+    head = await withThrottleRetry(() => client.getBlockNumber(), options)
   } catch (err) {
-    throw new ValidationReadError(`could not read the head block on chain ${chainId}`, {
-      retryable: true,
-      cause: err,
-    })
+    throw new ValidationReadError(
+      `could not read the head block on chain ${chainId}: ${oneLineReason(err)}`,
+      { retryable: true, cause: err },
+    )
   }
 
   const configuredFloor = optionalEnv(ENV.validationRegistryDeployBlock)
@@ -415,33 +542,37 @@ export async function readResponseEvent(
         : 0n
       : BigInt(configuredFloor)
 
-  let toBlock = head
-  while (toBlock >= floor) {
-    const fromBlock = toBlock > floor + LOG_CHUNK_BLOCKS ? toBlock - LOG_CHUNK_BLOCKS : floor
-    let logs
-    try {
-      logs = await client.getLogs({
-        address: registry,
-        event: VALIDATION_RESPONSE_EVENT,
-        args: { requestHash },
-        fromBlock,
-        toBlock,
-      })
-    } catch (err) {
-      throw new ValidationReadError(
-        `could not read the response URI for ${requestHash} between blocks ${fromBlock} and ${toBlock}`,
-        { retryable: true, cause: err },
-      )
-    }
-    const last = logs.at(-1)
-    const uri = (last?.args as { responseURI?: string } | undefined)?.responseURI
-    if (last !== undefined && typeof uri === 'string' && uri.length > 0) {
-      return { responseURI: uri, txHash: last.transactionHash as Hex }
-    }
-    if (fromBlock === floor) break
-    toBlock = fromBlock - 1n
+  let found: ResponseEvent | null = null
+  try {
+    await walkLogWindows(
+      head,
+      floor,
+      (fromBlock, toBlock) =>
+        client.getLogs({
+          address: registry,
+          event: VALIDATION_RESPONSE_EVENT,
+          args: { requestHash },
+          fromBlock,
+          toBlock,
+        }),
+      (logs) => {
+        const last = logs.at(-1) as { args?: { responseURI?: string }; transactionHash?: Hex } | undefined
+        const uri = last?.args?.responseURI
+        if (last !== undefined && typeof uri === 'string' && uri.length > 0) {
+          found = { responseURI: uri, txHash: last.transactionHash as Hex }
+          return true
+        }
+        return false
+      },
+      options,
+    )
+  } catch (err) {
+    throw new ValidationReadError(
+      `could not read the response URI for ${requestHash}: ${oneLineReason(err)}`,
+      { retryable: true, cause: err },
+    )
   }
-  return null
+  return found
 }
 
 export interface ResponseHistoryEntry {
@@ -481,12 +612,12 @@ export async function readResponseHistory(
 
   let head: bigint
   try {
-    head = await client.getBlockNumber()
+    head = await withThrottleRetry(() => client.getBlockNumber(), options)
   } catch (err) {
-    throw new ValidationReadError(`could not read the head block on chain ${chainId}`, {
-      retryable: true,
-      cause: err,
-    })
+    throw new ValidationReadError(
+      `could not read the head block on chain ${chainId}: ${oneLineReason(err)}`,
+      { retryable: true, cause: err },
+    )
   }
 
   const configuredFloor = optionalEnv(ENV.validationRegistryDeployBlock)
@@ -495,48 +626,58 @@ export async function readResponseHistory(
     configuredFloor === undefined ? (head > lookback ? head - lookback : 0n) : BigInt(configuredFloor)
 
   const entries: ResponseHistoryEntry[] = []
-  let toBlock = head
-  while (toBlock >= floor) {
-    const fromBlock = toBlock > floor + LOG_CHUNK_BLOCKS ? toBlock - LOG_CHUNK_BLOCKS : floor
-    try {
-      const logs = await client.getLogs({
-        address: registry,
-        event: VALIDATION_RESPONSE_EVENT,
-        // Both filters are indexed on the event, so the node does the work rather than the reader.
-        args: { validatorAddress: expected, agentId: tokenId },
-        fromBlock,
-        toBlock,
-      })
-      for (const log of logs) {
-        const args = log.args as {
-          requestHash?: Hex
-          responseURI?: string
-          responseHash?: Hex
-          response?: number
-          tag?: string
-          validatorAddress?: Address
+  try {
+    await walkLogWindows(
+      head,
+      floor,
+      (fromBlock, toBlock) =>
+        client.getLogs({
+          address: registry,
+          event: VALIDATION_RESPONSE_EVENT,
+          // Both filters are indexed on the event, so the node does the work rather than the reader.
+          args: { validatorAddress: expected, agentId: tokenId },
+          fromBlock,
+          toBlock,
+        }),
+      (logs) => {
+        for (const entry of logs) {
+          const log = entry as {
+            args?: {
+              requestHash?: Hex
+              responseURI?: string
+              responseHash?: Hex
+              response?: number
+              tag?: string
+              validatorAddress?: Address
+            }
+            transactionHash?: Hex
+            blockNumber?: bigint
+            logIndex?: number
+          }
+          const args = log.args ?? {}
+          if (args.requestHash === undefined) continue
+          entries.push({
+            requestHash: args.requestHash,
+            responseURI: args.responseURI ?? '',
+            txHash: log.transactionHash as Hex,
+            block: log.blockNumber ?? 0n,
+            logIndex: log.logIndex ?? 0,
+            score: args.response ?? 0,
+            tag: args.tag ?? '',
+            responseHash: args.responseHash ?? (ZERO_HASH as Hex),
+            validator: getAddress(args.validatorAddress ?? expected),
+          })
         }
-        if (args.requestHash === undefined) continue
-        entries.push({
-          requestHash: args.requestHash,
-          responseURI: args.responseURI ?? '',
-          txHash: log.transactionHash as Hex,
-          block: log.blockNumber ?? 0n,
-          logIndex: log.logIndex ?? 0,
-          score: args.response ?? 0,
-          tag: args.tag ?? '',
-          responseHash: args.responseHash ?? (ZERO_HASH as Hex),
-          validator: getAddress(args.validatorAddress ?? expected),
-        })
-      }
-    } catch (err) {
-      throw new ValidationReadError(
-        `could not read the response history for agent ${agentId} between blocks ${fromBlock} and ${toBlock}`,
-        { retryable: true, cause: err },
-      )
-    }
-    if (fromBlock === floor) break
-    toBlock = fromBlock - 1n
+        // Every window is read: the history is the whole record, not the newest one.
+        return false
+      },
+      options,
+    )
+  } catch (err) {
+    throw new ValidationReadError(
+      `could not read the response history for agent ${agentId}: ${oneLineReason(err)}`,
+      { retryable: true, cause: err },
+    )
   }
 
   return entries.sort((a, b) =>
@@ -620,7 +761,7 @@ export async function readCurrentValidation(
   const registry = getAddress(options.registry ?? registryConfig!.address)
   const chainId = options.chainId ?? registryConfig!.chainId
   const client = publicClientFor(chainId, options.client)
-  const status = await readStatus(client, registry, selected.requestHash)
+  const status = await readStatus(client, registry, selected.requestHash, options)
   if (status === null) return null
 
   if (status.responseHash.toLowerCase() !== selected.responseHash.toLowerCase()) {

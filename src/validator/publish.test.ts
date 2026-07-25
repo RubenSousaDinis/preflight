@@ -5,12 +5,18 @@ import type { PublicClient } from 'viem'
 import { PublishError, ValidationReadError } from '../shared/errors.ts'
 import type { Address, GradeResult, Hex } from '../shared/types.ts'
 import { FIXTURE_GRADE_A, FIXTURE_GRADE_F } from '../shared/fixtures/index.ts'
-import { dataUriPinner, pinEvidence, verifyPublishedEvidence } from './pin-evidence.ts'
+import {
+  dataUriPinner,
+  fetchPublishedEvidence,
+  pinEvidence,
+  verifyPublishedEvidence,
+} from './pin-evidence.ts'
 import { evidenceHash } from './canonical.ts'
 import {
   assemblePublishCall,
   computeRequestHash,
   readCurrentValidation,
+  readResponseHistory,
   readValidation,
   VALIDATION_TTL_SECONDS,
 } from './validation-registry.ts'
@@ -419,4 +425,240 @@ test('a record whose storage and event disagree is refused rather than presented
     () => readCurrentValidation('7', VALIDATOR, { client, registry: REGISTRY, chainId: CHAIN, now: NOW }),
     /disagrees with its own event/,
   )
+})
+
+// --- the cost of a read, and what a throttled endpoint does to it ----------
+
+/*
+  Measured against the event RPC on Base Sepolia on 2026-07-25: one 100,000 block getLogs window
+  came back in 630ms, and the same range walked in 900 block windows took 15,007ms across 100
+  calls. The gate runs this read on every poll of the rug pull beat, so those 100 calls are what
+  saturated the endpoint's limiter and turned a hire into "the validation registry could not be
+  read". The window is a provider question, not a chain question, so it is asked wide and narrowed
+  only when a provider says no.
+*/
+function countingClient(options: {
+  logs: { requestHash: Hex; block: bigint; logIndex: number; score: number; responseHash: Hex; uri: string }[]
+  storage: Record<string, Status>
+  head: bigint
+  /** Windows wider than this are refused, the way a capped provider refuses them. */
+  maxWindow?: bigint
+  /** Fail this many calls with the provider's throttle before answering. */
+  throttleFirst?: number
+  calls: { getLogs: { fromBlock: bigint; toBlock: bigint }[] }
+}): PublicClient {
+  let throttled = 0
+  return {
+    getBlockNumber: async () => options.head,
+    getLogs: async ({ fromBlock, toBlock }: { fromBlock: bigint; toBlock: bigint }) => {
+      if (options.throttleFirst !== undefined && throttled < options.throttleFirst) {
+        throttled += 1
+        throw Object.assign(new Error('Requested resource not available. Details: rate limited'), {
+          code: -32002,
+        })
+      }
+      if (options.maxWindow !== undefined && toBlock - fromBlock > options.maxWindow) {
+        throw new Error('query exceeds max block range 10000')
+      }
+      options.calls.getLogs.push({ fromBlock, toBlock })
+      return options.logs
+        .filter((entry) => entry.block >= fromBlock && entry.block <= toBlock)
+        .map((entry) => ({
+          args: {
+            requestHash: entry.requestHash,
+            responseURI: entry.uri,
+            responseHash: entry.responseHash,
+            response: entry.score,
+            tag: 'litmus-v17',
+            validatorAddress: VALIDATOR,
+          },
+          blockNumber: entry.block,
+          logIndex: entry.logIndex,
+          transactionHash: `0xtx${entry.logIndex}`,
+        }))
+    },
+    readContract: async ({ functionName, args }: { functionName: string; args: readonly unknown[] }) => {
+      if (functionName === 'getAgentValidations') return options.logs.map((entry) => entry.requestHash)
+      if (functionName === 'getValidationStatus') {
+        const entry = options.storage[String(args[0])]
+        if (entry === undefined) throw new Error('execution reverted: unknown')
+        return [entry.validator, entry.agentId, entry.response, entry.responseHash, entry.tag, BigInt(entry.lastUpdate)]
+      }
+      throw new Error(`unexpected call ${functionName}`)
+    },
+  } as unknown as PublicClient
+}
+
+const HISTORY_HASH = '0xd1' as Hex
+
+function historyFixture(head: bigint) {
+  return {
+    logs: [
+      {
+        requestHash: HISTORY_HASH,
+        block: head - 40_000n,
+        logIndex: 0,
+        score: 100,
+        responseHash: '0xe1' as Hex,
+        uri: 'https://e/1',
+      },
+    ],
+    storage: {
+      [HISTORY_HASH]: statusFor(FIXTURE_GRADE_A, { responseHash: '0xe1' as Hex, response: 100 }),
+    },
+  }
+}
+
+test('the log scan asks for the widest window it can, not a hundred narrow ones', async () => {
+  const head = 1_000_000n
+  const calls = { getLogs: [] as { fromBlock: bigint; toBlock: bigint }[] }
+  const client = countingClient({ ...historyFixture(head), head, calls })
+
+  const history = await readResponseHistory('7', VALIDATOR, {
+    client,
+    registry: REGISTRY,
+    chainId: CHAIN,
+    lookbackBlocks: 90_000n,
+  })
+
+  assert.equal(history.length, 1, 'the record is found')
+  assert.ok(
+    calls.getLogs.length <= 2,
+    `90,000 blocks should cost at most two calls, took ${calls.getLogs.length}`,
+  )
+})
+
+test('a provider that caps the window is narrowed to, not failed on', async () => {
+  const head = 1_000_000n
+  const calls = { getLogs: [] as { fromBlock: bigint; toBlock: bigint }[] }
+  const client = countingClient({ ...historyFixture(head), head, maxWindow: 10_000n, calls })
+
+  const history = await readResponseHistory('7', VALIDATOR, {
+    client,
+    registry: REGISTRY,
+    chainId: CHAIN,
+    lookbackBlocks: 90_000n,
+  })
+
+  assert.equal(history.length, 1, 'the record is still found on a capped provider')
+  for (const call of calls.getLogs) {
+    assert.ok(
+      call.toBlock - call.fromBlock <= 10_000n,
+      `the window ${call.fromBlock}..${call.toBlock} is wider than the provider allows`,
+    )
+  }
+})
+
+test('a throttled call is retried, because a rate limit is not an answer about an agent', async () => {
+  const head = 1_000_000n
+  const calls = { getLogs: [] as { fromBlock: bigint; toBlock: bigint }[] }
+  const client = countingClient({ ...historyFixture(head), head, throttleFirst: 2, calls })
+
+  const history = await readResponseHistory('7', VALIDATOR, {
+    client,
+    registry: REGISTRY,
+    chainId: CHAIN,
+    lookbackBlocks: 90_000n,
+    retryDelayMs: 0,
+  })
+  assert.equal(history.length, 1, 'the read survives a throttle that clears')
+})
+
+test('a throttle that does not clear fails closed, and says it was a throttle', async () => {
+  const head = 1_000_000n
+  const calls = { getLogs: [] as { fromBlock: bigint; toBlock: bigint }[] }
+  const client = countingClient({ ...historyFixture(head), head, throttleFirst: 99, calls })
+
+  await assert.rejects(
+    () =>
+      readResponseHistory('7', VALIDATOR, {
+        client,
+        registry: REGISTRY,
+        chainId: CHAIN,
+        lookbackBlocks: 90_000n,
+        retryDelayMs: 0,
+      }),
+    (err: unknown) => {
+      assert.ok(err instanceof ValidationReadError)
+      assert.match(err.reason, /rate limit/i)
+      assert.equal(err.retryable, true)
+      return true
+    },
+  )
+})
+
+// --- a gateway that answers "again in a moment" ----------------------------
+
+/*
+  Measured against the 0G indexer on 2026-07-25: four concurrent fetches of one evidence URI came
+  back 600, 600, 200, 200, and the 600 carried {"code":2,"message":"Internal server error","data":
+  "...failed to download segment 0"}. Every client on the rug pull beat reads the same URI at the
+  same instant, so this lands mid-beat and the gate refuses an agent whose evidence is there. 600 is
+  not a status any RFC defines, which is why these stubs are shaped by hand: the Response
+  constructor refuses to build one. The gateway means "busy", so it is asked again.
+*/
+function respondingWith(statuses: number[], body: string): { impl: typeof fetch; calls: () => number } {
+  let calls = 0
+  const impl = (async () => {
+    const status = statuses[Math.min(calls, statuses.length - 1)]!
+    calls += 1
+    return {
+      ok: status >= 200 && status < 300,
+      status,
+      text: async () => body,
+    }
+  }) as unknown as typeof fetch
+  return { impl, calls: () => calls }
+}
+
+test('a gateway that fails transiently is asked again before the evidence is called unreachable', async () => {
+  const bundle = JSON.stringify({ schema: 'preflight-evidence-v1' })
+  const gateway = respondingWith([600, 600, 200], bundle)
+
+  const text = await fetchPublishedEvidence('https://evidence.example/bundle', {
+    fetchImpl: gateway.impl,
+    retryDelayMs: 0,
+    timeoutMs: 1_000,
+  })
+  assert.equal(text, bundle)
+  assert.equal(gateway.calls(), 3, 'it asked again twice and then read the document')
+})
+
+test('a gateway that keeps failing is a refusal, not a wait forever', async () => {
+  const gateway = respondingWith([600], 'down')
+
+  await assert.rejects(
+    () =>
+      fetchPublishedEvidence('https://evidence.example/bundle', {
+        fetchImpl: gateway.impl,
+        retryDelayMs: 0,
+        timeoutMs: 1_000,
+      }),
+    (err: unknown) => {
+      assert.ok(err instanceof PublishError)
+      assert.match(err.reason, /answered HTTP 600/)
+      assert.equal(err.retryable, true)
+      return true
+    },
+  )
+  assert.ok(gateway.calls() > 1 && gateway.calls() <= 5, `bounded attempts, made ${gateway.calls()}`)
+})
+
+test('a status that will not change is not retried', async () => {
+  const gateway = respondingWith([404], 'no')
+
+  await assert.rejects(
+    () =>
+      fetchPublishedEvidence('https://evidence.example/bundle', {
+        fetchImpl: gateway.impl,
+        retryDelayMs: 0,
+        timeoutMs: 1_000,
+      }),
+    (err: unknown) => {
+      assert.ok(err instanceof PublishError)
+      assert.equal(err.retryable, false)
+      return true
+    },
+  )
+  assert.equal(gateway.calls(), 1, 'a 404 is an answer, so it is not asked again')
 })
