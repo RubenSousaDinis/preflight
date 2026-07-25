@@ -48,6 +48,12 @@ export const KNOWN_AGENT_IDS: readonly AgentId[] = KNOWN_AGENTS.map(
   (agent) => agent.id,
 );
 
+/** Beat 4 drift subject; the rug pull view seeds its input with this id. */
+export const DRIFT_AGENT_ID: AgentId = "8437";
+
+/** Beat 1 run candidates: 8427 hired, 8430 refused on grade, 8437 refused on drift. */
+export const RUN_CANDIDATE_IDS: readonly AgentId[] = ["8427", "8430", "8437"];
+
 export const SEPOLIA_IDENTITY_CHAIN_ID: ChainId = 84532;
 
 export type KnownAgentCatalogEntry = KnownAgent & {

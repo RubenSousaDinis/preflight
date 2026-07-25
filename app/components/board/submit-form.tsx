@@ -19,8 +19,11 @@ import { ErrorState, PulseDots } from "../states";
 */
 export function SubmitForm({
   catalog,
+  allowMainnetClaim = false,
 }: {
   catalog: readonly KnownAgentCatalogEntry[];
+  /** Mainnet claims register a Sepolia mirror with the validator key; operator deployments only. */
+  allowMainnetClaim?: boolean;
 }) {
   const [result, formAction, isPending] = useActionState<
     SubmitResult | null,
@@ -127,15 +130,17 @@ export function SubmitForm({
                 >
                   grade
                 </button>
-                <button
-                  type="button"
-                  disabled={isPending || claimPending}
-                  onClick={() => claimKnown(agent)}
-                  className="shrink-0 border-l border-rule px-3 font-data text-[0.68rem] tracking-[0.08em] text-ink/55 transition-colors hover:bg-band/60 hover:text-accent disabled:opacity-50"
-                  title="Claim the Preflight ENS subname for this agent's owner"
-                >
-                  claim
-                </button>
+                {agent.identityChainId !== 8453 || allowMainnetClaim ? (
+                  <button
+                    type="button"
+                    disabled={isPending || claimPending}
+                    onClick={() => claimKnown(agent)}
+                    className="shrink-0 border-l border-rule px-3 font-data text-[0.68rem] tracking-[0.08em] text-ink/55 transition-colors hover:bg-band/60 hover:text-accent disabled:opacity-50"
+                    title="Claim the Preflight ENS subname for this agent's owner"
+                  >
+                    claim
+                  </button>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -248,21 +253,23 @@ export function SubmitForm({
               {result.methodologyVersion} / {result.endpointsGraded} endpoint
               {result.endpointsGraded === 1 ? "" : "s"} graded
             </p>
-            <button
-              type="button"
-              disabled={claimPending}
-              onClick={() => {
-                const data = new FormData();
-                data.set("agentId", result.agentId);
-                data.set("chainId", String(result.identityChainId));
-                startTransition(() => {
-                  claimAction(data);
-                });
-              }}
-              className="mt-3 border border-rule px-3 py-1.5 font-data text-[0.72rem] tracking-[0.08em] text-ink/70 transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
-            >
-              claim ENS for owner
-            </button>
+            {result.identityChainId !== 8453 || allowMainnetClaim ? (
+              <button
+                type="button"
+                disabled={claimPending}
+                onClick={() => {
+                  const data = new FormData();
+                  data.set("agentId", result.agentId);
+                  data.set("chainId", String(result.identityChainId));
+                  startTransition(() => {
+                    claimAction(data);
+                  });
+                }}
+                className="mt-3 border border-rule px-3 py-1.5 font-data text-[0.72rem] tracking-[0.08em] text-ink/70 transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
+              >
+                claim ENS for owner
+              </button>
+            ) : null}
           </div>
         ) : null}
 
@@ -316,15 +323,32 @@ export function SubmitForm({
             </p>
             <p className="mt-2 font-data text-[0.72rem] leading-snug text-ink/50">
               {claimResult.trustNote}{" "}
-              <a
-                href={ensAppUrl(claimResult.name)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-accent underline-offset-2 hover:underline"
-              >
-                Open in ENS App (Base Sepolia)
-              </a>{" "}
-              to read the text records.
+              {claimResult.recordsSeeded ? (
+                <>
+                  <a
+                    href={ensAppUrl(claimResult.name)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-accent underline-offset-2 hover:underline"
+                  >
+                    Open in ENS App (Base Sepolia)
+                  </a>{" "}
+                  to read the mirrored text records.
+                </>
+              ) : (
+                <>
+                  After a grade is published, claim again to seed them, then open{" "}
+                  <a
+                    href={ensAppUrl(claimResult.name)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-accent underline-offset-2 hover:underline"
+                  >
+                    ENS App (Base Sepolia)
+                  </a>
+                  .
+                </>
+              )}
             </p>
           </div>
         ) : null}
