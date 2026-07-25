@@ -157,6 +157,7 @@ export const DEFAULT_BOARD_AGENT_IDS: readonly AgentId[] = [
   "8430",
   "8436",
   "8437",
+  "8441",
 ];
 
 /**

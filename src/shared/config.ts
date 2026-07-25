@@ -122,7 +122,12 @@ export const ENV = {
   ensChainId: 'ENS_CHAIN_ID',
   /** The ENS registry, or a fork of it such as the Basenames Registry. */
   ensRegistryAddress: 'ENS_REGISTRY_ADDRESS',
-  /** The validator-owned parent the agent subnames hang off, for example `preflight.base.eth`. */
+  /**
+   * The validator-owned parent the agent subnames hang off.
+   *
+   * Event target: `preflight.basetest.eth` on Base Sepolia (Basenames testnet TLD). Writes against
+   * Base mainnet are refused in the ENS client so this project never spends real ETH on a name.
+   */
   ensParentName: 'ENS_PARENT_NAME',
   /**
    * The resolver set on new subnames, optional.

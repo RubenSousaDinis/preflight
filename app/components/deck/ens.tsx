@@ -6,9 +6,10 @@ import { Card, Dim, Kicker, Slide, Terminal } from "./parts";
 
   Written against the repository as it stands. The integration is in
   src/validator/ens and app/lib/ens.ts, and every claim on slides 1 and 2 is
-  checkable there. Nothing has been written to a chain yet: no parent name is
-  registered, so no agent carries a record. Slide 3 says that, and slide 3 is the
-  slide that changes when the live pass lands. The deck does not lead the build.
+  checkable there. Slide 3 tracks the live pass: subnames and records are on
+  preflight.basetest.eth (Base Sepolia Basenames). Writes stay on Sepolia on
+  purpose; this project does not spend mainnet ETH on a Basename. The deck
+  does not lead the build.
 */
 
 const TOTAL = 3;
@@ -95,44 +96,41 @@ export const ENS_SLIDES: ReactNode[] = [
 
   <Slide key="3" tone="light" eyebrow="WHERE IT STANDS" index={3} total={TOTAL}>
     <h2 className="mb-9 font-display text-[68px] leading-[1.07] font-semibold tracking-[-1.5px]">
-      Built and checked.{" "}
-      <span className="text-grade-c">Not yet on a name.</span>
+      On a name.{" "}
+      <span className="text-accent">Verified against the registry.</span>
     </h2>
     <div className="mb-9">
       <Terminal>
         <div>
-          <Dim>shipped</Dim> src/validator/ens{"   "}names, records, client,
-          mirror
+          <Dim>live</Dim> parent{"   "}preflight.basetest.eth{"   "}
+          <Dim>Basenames on Base Sepolia</Dim>
         </div>
         <div>
-          <Dim>shipped</Dim> ens status | subname | sync | verify | set{"   "}
-          <Dim>dry run by default</Dim>
+          <Dim>live</Dim> agent8427 · 8430 · 8436 · 8437 · 8441
+          .preflight.basetest.eth
         </div>
         <div>
-          <Dim>shipped</Dim> the console renders the name and labels it a copy
+          <Dim>checked</Dim> ens verify{"   "}exit 0 for each{"   "}
+          <Dim>twelve keys agree with the ValidationRegistry</Dim>
         </div>
         <div>
-          <Dim>checked</Dim> 22 offline tests on the mirror, five on the line
-          that renders it
+          <Dim>checked</Dim> independent resolver.text read{"   "}
+          grade B on agent8441
         </div>
         <div>
-          <Dim>checked</Dim> the read path against a live ENS registry, read
-          only
-        </div>
-        <div>
-          <span className="text-dark-warn">not yet</span> a parent name
-          registered, so no agent carries a record
+          <Dim>policy</Dim> writes on Base Sepolia only{"   "}
+          <Dim>no mainnet ETH spent on a name</Dim>
         </div>
       </Terminal>
     </div>
     <div className="mb-9 grid grid-cols-2 gap-7">
       <Card
-        title="What the live pass adds"
-        body="Register the parent, create one subname per graded agent, and sync each one from its registry record. Then ens verify exits zero when every key on the name matches the registry read side by side, and a publish moves preflight.updatedAt on chain while the demo watches."
+        title="What verify proved"
+        body="Each subname's text records were written from the ValidationRegistry row for that agent, then read back through the configured Basenames registry and L2Resolver. ens verify exits zero only when every key matches. The description record still names the registry as the source."
       />
       <Card
-        title="Why the slide says so"
-        body="A sponsor slide that describes unwritten records as live is the one thing this project argues against: a claim on a screen that the thing behind it cannot support. The console labels its own fixtures for the same reason, and this deck changes when the transactions land, not before."
+        title="Why Sepolia"
+        body="The grade mirror writes only on Base Sepolia. A mainnet Basename would cost real ETH for no change to the trust model: the ValidationRegistry on Sepolia is still the source, and the name is still a labelled copy. The send path refuses any other ENS_CHAIN_ID."
       />
     </div>
     <Kicker>

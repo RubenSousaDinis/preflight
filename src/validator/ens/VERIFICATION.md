@@ -111,47 +111,59 @@ agent8427.preflight.base.eth
   labelhash 0x1397faa45bb75a4c5df3290a139835fb81d18136fc61dd8620c41234b8ae97db  (agent8427)
 ```
 
-## Not run here, and why
+## Live pass (2026-07-25, Base Sepolia rehearsal)
 
-Everything that spends a key or a fee is the operator's, in his own session. None of it is claimed
-above and none of it is claimed on the site.
-
-- registering the parent name, on either Basenames target, and the `register()` and `registerPrice`
-  signature check that precedes funding
-- `ens subname <id> --send`, `ens sync <id> --send`, and the `ens verify <id>` exit-0 pass for the
-  four demo agents, which is D5d check 2
-- one `publish <id> --send` showing the auto-hook move `preflight.updatedAt` on chain
-- the independent third-party read of a record, so the claim does not rest on our own reader
-- the deck slide flip in `app/components/deck/ens.tsx`, which stays as it is until the live
-  `ens verify` pass and happens on the operator's word
-
-Prepared to copy-paste level for that session, with env set first:
+Primary target was listed as `preflight.base.eth` on Basenames mainnet; that path is **retired** —
+no mainnet ETH. The Sepolia Basenames parent is the live target. On Sepolia the TLD is `basetest.eth`,
+not `base.eth`, so the parent string that namehashes correctly is `preflight.basetest.eth`.
 
 ```
-node --env-file-if-exists=.env.local --import tsx src/validator/cli.ts ens status 8427 8428 8429 8430
-node --env-file-if-exists=.env.local --import tsx src/validator/cli.ts ens subname 8427
-node --env-file-if-exists=.env.local --import tsx src/validator/cli.ts ens subname 8427 --send
-node --env-file-if-exists=.env.local --import tsx src/validator/cli.ts ens sync 8427 --send
-node --env-file-if-exists=.env.local --import tsx src/validator/cli.ts ens verify 8427   # exit 0
-node --env-file-if-exists=.env.local --import tsx src/validator/cli.ts publish 8427 --send
+target registered:   preflight.basetest.eth / chain 84532
+                     registry 0x1493b2567056c2181630115660963E13A8E32735
+                     node     0x697c2580221ad53eae2367791ea54871b85c96295fff8df3d81d30ceb96ae03b
+                     owner    0xCFad8f21B8469790ADc3922814d1df4E08ECF1c8
+resolver on parent:  0x6533C94869D28fAA8dF77cc63f9e2b2D6Cf77eBA (L2Resolver)
+env:                 ENS_CHAIN_ID=84532
+                     ENS_REGISTRY_ADDRESS=0x1493b2567056c2181630115660963E13A8E32735
+                     ENS_PARENT_NAME=preflight.basetest.eth
+                     ENS_RESOLVER_ADDRESS=0x6533C94869D28fAA8dF77cc63f9e2b2D6Cf77eBA
+                     (ENS_RPC_URL left unset → BASE_SEPOLIA_RPC_URL; public sepolia.base.org rate-limits)
 ```
 
-Two notes for that run. `ens verify` compares every key a sync would write now, so pass the same
-`--receipts-head` and `--receipts-count` values that the sync used or those two keys will read as a
-disagreement. And the runbook's rule against a concurrent `ens sync --send` during a publish stands:
-the hook fires after the publish receipts and the mirror drains serially, so the only way to get
-nonce contention is to run both by hand at once.
-
-## Fill at execution
+Also graded and published agent **8441** (ENSWhois MCP, grade B / 75 / litmus-v17) before the mirror
+run, so the board subjects are the four demos plus 8441.
 
 ```
-target registered (parent / chain / tx):
-resolver on the parent:
-subname per agent (name / tx):
-records set per agent (tx):
-ens verify exit code, per agent:
-publish auto-hook: updatedAt before / after / tx:
-independent read (tool, and what it answered):
-console rendering: names in sub-lines, mirror line labelled, no-record agent clean:
-regrade-to-record lag, if beat 4 ran:
+subname create txs (setSubnodeRecord; immediate post-tx read can lag — retries added in client):
+  agent8441  0x9b0353b2434fad0cdccbea533186489a4e32ad8c644414d97f64377b9e5336b4
+  agent8427  0xd5204a0ae46a04d7d9c6b1a0522111d934e6abdfbedbef0473381918e0d0e757
+  agent8430  0xf618967c38eb90e7f8506b05050a7c9f631aa8c3ee9c4f0860a58e53b378577a
+  agent8436  0xcc9f7c362a1450008c34f9078ea9c61f1c5eaec1e816a50550ecdd045385675f
+  agent8437  0x13eac0cdf7ed971ea65f8120b98b9ad6f28bd24feebdc36872fc80d05d933a29
+
+records sync txs (resolver multicall):
+  8441  0x95ac595404b20e3d216064d2ce847364861eb0d63fe3696b5420c558265ba9a5  grade B
+  8427  0xcaf2fd398c05e5d724a084db8099dd1cf567eafc2d78adc58ec37efed7ade02a  grade B
+  8430  0xc3b9de1c73dbd0ddd81171d7d8a12eadd22ba0425e2ae4474cf355c7c1689bb9  grade F
+  8436  0xc51d32419562fea5a59d70049863b15a3f583f90bb40b7997ba806a989ab9222  grade B
+  8437  0x9d632ddb7ffdf6abbaa8201d74ddd7c9c8e87cba53e03cc2e254cdfa2d5a4ca2  grade C
+
+ens verify exit code: 0 for 8441, 8427, 8430, 8436, 8437  (AGREES: every key matches the registry)
+
+independent read (registry.resolver → resolver.text, not the ens CLI):
+  agent8441.preflight.basetest.eth
+    preflight.grade        "B"
+    preflight.score        "75"
+    preflight.agentId      "8441"
+    preflight.methodology  "litmus-v17"
+    description            names eip155:84532:0xc0274d5a…7393 as the source
+
+publish auto-hook: not re-run in this pass (sync wrote the live records directly).
+console: Vercel ENS_* + PREFLIGHT_BOARD_AGENT_IDS="8427 8430 8436 8437 8441" set; redeploy required
+         for names to render on the board.
 ```
+
+**Policy (settled):** ENS grade-mirror **writes are Base Sepolia only**. A send against any other
+`ENS_CHAIN_ID` is refused in `assertEnsWriteAllowed` so this project never spends mainnet ETH on a
+Basename. The console reads the same Sepolia registry the writes hit — a mirror is useless if read
+from a chain that was never written. `preflight.base.eth` on 8453 is not a follow-up item.
