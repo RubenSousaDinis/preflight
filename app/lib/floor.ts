@@ -8,7 +8,7 @@ import {
   FIXTURE_DECISION_DRIFT,
   FIXTURE_DECISION_HIRE,
 } from "@/src/shared/fixtures";
-import { ensNameFor } from "./ens";
+import { ensNameIfRegistered } from "./ens";
 import { toRenderableError, type RenderableError } from "./errors";
 
 /**
@@ -60,16 +60,21 @@ async function vetCandidate(candidate: {
   card: AgentCard;
   decision: GateDecision;
 }): Promise<FloorRow> {
-  const base = {
-    agentId: candidate.card.agentId,
-    card: candidate.card,
-    ensName: ensNameFor(candidate.card.agentId),
-  };
   const startedAt = performance.now();
+  // The ENS lookup is cosmetic and must never delay or fail the gate call. It runs
+  // beside it, and a miss is null rather than an error on the row.
+  const ensNamePromise = ensNameIfRegistered(candidate.card.agentId).catch(
+    () => null,
+  );
   try {
-    const decision = await Promise.resolve(candidate.decision);
+    const [decision, ensName] = await Promise.all([
+      Promise.resolve(candidate.decision),
+      ensNamePromise,
+    ]);
     return {
-      ...base,
+      agentId: candidate.card.agentId,
+      card: candidate.card,
+      ensName,
       decision,
       error: null,
       pending: false,
@@ -77,7 +82,9 @@ async function vetCandidate(candidate: {
     };
   } catch (thrown) {
     return {
-      ...base,
+      agentId: candidate.card.agentId,
+      card: candidate.card,
+      ensName: await ensNamePromise,
       decision: null,
       error: toRenderableError(thrown),
       pending: false,
