@@ -101,7 +101,14 @@ test("the board always renders the validator and the height it read at", () => {
   const markup = renderToStaticMarkup(
     <Leaderboard
       board={{
-        entries: [{ agentId: "8427", record: record({ agentId: "8427" }), grade: "A" }],
+        entries: [
+          {
+            agentId: "8427",
+            record: record({ agentId: "8427" }),
+            grade: "A",
+            ensName: null,
+          },
+        ],
         unlisted: ["8428"],
         readAtBlock: "31337",
         chainId: 84532,
@@ -121,7 +128,14 @@ test("the freshness bound is disclosed as the reader's, not the chain's", () => 
   const markup = renderToStaticMarkup(
     <Leaderboard
       board={{
-        entries: [{ agentId: "8427", record: record({ agentId: "8427" }), grade: "A" }],
+        entries: [
+          {
+            agentId: "8427",
+            record: record({ agentId: "8427" }),
+            grade: "A",
+            ensName: null,
+          },
+        ],
         unlisted: [],
         readAtBlock: "31337",
         chainId: 84532,

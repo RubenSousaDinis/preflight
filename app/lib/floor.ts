@@ -8,6 +8,7 @@ import {
   FIXTURE_DECISION_DRIFT,
   FIXTURE_DECISION_HIRE,
 } from "@/src/shared/fixtures";
+import { ensNameFor } from "./ens";
 import { toRenderableError, type RenderableError } from "./errors";
 
 /**
@@ -29,6 +30,12 @@ export type FloorRow = {
    * its fingerprint result off the attestation would sit at zero forever.
    */
   recheckMs: number;
+  /**
+   * The agent's ENS name, when one is derivable. Cosmetic, and null renders the
+   * row exactly as it rendered before names existed. Nothing in the verdict this
+   * row carries depends on it.
+   */
+  ensName: string | null;
 };
 
 const CANDIDATES: { card: AgentCard; decision: GateDecision }[] = [
@@ -53,7 +60,11 @@ async function vetCandidate(candidate: {
   card: AgentCard;
   decision: GateDecision;
 }): Promise<FloorRow> {
-  const base = { agentId: candidate.card.agentId, card: candidate.card };
+  const base = {
+    agentId: candidate.card.agentId,
+    card: candidate.card,
+    ensName: ensNameFor(candidate.card.agentId),
+  };
   const startedAt = performance.now();
   try {
     const decision = await Promise.resolve(candidate.decision);

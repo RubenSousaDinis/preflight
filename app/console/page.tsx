@@ -7,6 +7,7 @@ import { ConsoleFooter, ConsoleNav } from "../components/console-nav";
 import { Container } from "../components/container";
 import { PendingQueue } from "../components/firewall/pending-queue";
 import { UnseenSlot } from "../components/firewall/unseen-slot";
+import { EnsMirrorLine } from "../components/ens/ens-mirror-line";
 import { DemoTargetLine } from "../components/floor/demo-target-line";
 import { HiringFloor } from "../components/floor/hiring-floor";
 import { MirrorLine } from "../components/receipts/mirror-line";
@@ -14,6 +15,7 @@ import { ReceiptChain } from "../components/receipts/receipt-chain";
 import { LiveRun } from "../components/transcript/live-run";
 import { RugPull } from "../components/watch/rug-pull";
 import { readDemoTarget } from "../lib/demo-target";
+import { readEnsMirror } from "../lib/ens";
 import { loadFirewallQueue } from "../lib/firewall";
 import { FLOOR_POLICY, loadFloor } from "../lib/floor";
 import { readMirrorStatus } from "../lib/hcs";
@@ -72,9 +74,16 @@ export default async function ConsolePage({
       : [null, null, null];
   const queue = view === "firewall" ? await loadFirewallQueue() : null;
   const board = view === "board" ? await readBoard(boardSubjects(agents)) : null;
+  // The ENS mirror is read for the first subject the board is about, which is the
+  // agent the demo resolves on stage. It never throws and it is never awaited by
+  // anything that decides something.
   const receipts =
     view === "receipts"
-      ? await Promise.all([loadReceipts(), readMirrorStatus()])
+      ? await Promise.all([
+          loadReceipts(),
+          readMirrorStatus(),
+          readEnsMirror(boardSubjects(agents)[0] ?? ""),
+        ])
       : null;
 
   return (
@@ -186,8 +195,9 @@ export default async function ConsolePage({
                 lede="The receipts a run produces are shown with that run, on the hiring floor. This chain is the fixture set, kept because the verifier rejects it: a screen that can only ever agree is not worth putting a verifier behind."
               />
               <ReceiptChain log={receipts[0]} />
-              <div className="mt-5">
+              <div className="mt-5 space-y-4">
                 <MirrorLine status={receipts[1]} />
+                <EnsMirrorLine mirror={receipts[2]} />
               </div>
             </>
           ) : null}

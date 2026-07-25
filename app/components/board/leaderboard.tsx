@@ -43,6 +43,15 @@ function Row({ entry }: { entry: BoardEntry }) {
         <p className="mt-0.5 font-data text-[0.68rem] break-all text-ink/45">
           {entry.record.tag}
         </p>
+        {/*
+          The name under the id, never in place of it. A row with no name renders
+          as it always did, which is the ordinary state until one is registered.
+        */}
+        {entry.ensName ? (
+          <p className="mt-0.5 font-data text-[0.68rem] break-all text-ink/45">
+            {entry.ensName}
+          </p>
+        ) : null}
       </div>
       <div>
         <span

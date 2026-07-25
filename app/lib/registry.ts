@@ -3,6 +3,7 @@ import { validationRegistry, validatorAddress } from "@/src/shared/config";
 import { gradeForScore } from "@/src/shared";
 import type { AgentId, Grade, ValidationRecord } from "@/src/shared";
 import { readValidation } from "@/src/validator/validation-registry";
+import { ensNameFor } from "./ens";
 import { toRenderableError, type RenderableError } from "./errors";
 
 /**
@@ -21,6 +22,12 @@ export type BoardEntry = {
   agentId: AgentId;
   record: ValidationRecord;
   grade: Grade;
+  /**
+   * The agent's ENS name, when one is derivable. Cosmetic and always optional:
+   * null renders exactly as this board did before names existed, which is the
+   * state every row is in until a name is registered.
+   */
+  ensName: string | null;
 };
 
 export type BoardRead = {
@@ -61,7 +68,12 @@ function entryFor(record: ValidationRecord): BoardEntry | null {
   // a letter for it would put an unearned grade on a big screen.
   const grade = gradeForScore(record.score);
   if (grade === null) return null;
-  return { agentId: record.agentId, record, grade };
+  return {
+    agentId: record.agentId,
+    record,
+    grade,
+    ensName: ensNameFor(record.agentId),
+  };
 }
 
 /**

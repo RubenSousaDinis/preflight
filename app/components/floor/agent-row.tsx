@@ -125,6 +125,15 @@ function AgentName({ row }: { row: FloorRow }) {
       <p className="mt-0.5 font-data text-[0.7rem] break-all text-ink/50">
         {row.agentId}
       </p>
+      {/*
+        The name sits under the id, never instead of it. The id is the thing that
+        is verifiable, and a row with no name renders exactly as it did before.
+      */}
+      {row.ensName ? (
+        <p className="mt-0.5 font-data text-[0.68rem] break-all text-ink/45">
+          {row.ensName}
+        </p>
+      ) : null}
     </div>
   );
 }
