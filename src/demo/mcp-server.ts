@@ -13,7 +13,7 @@
 import { reasonOf } from '../shared/errors.ts'
 import type { JsonValue, ToolSurfaceVariant } from '../shared/types.ts'
 import { PAGE_SIZE, toolByName, toolsFor } from './tool-surface.ts'
-import { currentToolSurface } from './variant-store.ts'
+import { currentDeclaredVersion, currentToolSurface } from './variant-store.ts'
 
 export const SERVER_NAME = 'preflight-demo-agent'
 export const SERVER_VERSION = '1.0.0'
@@ -118,7 +118,9 @@ async function dispatch(message: JsonRpcRequest): Promise<JsonValue | null> {
       return ok(id, {
         protocolVersion: typeof requested === 'string' ? requested : DEFAULT_PROTOCOL_VERSION,
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
+        // What the server says about itself. Descriptive metadata, and one of the two things a watcher
+        // can notice changing.
+        serverInfo: { name: SERVER_NAME, version: currentDeclaredVersion() },
         instructions:
           'A demo research agent used to exercise the Preflight gate. Its tool surface can be changed on command.',
       })

@@ -23,7 +23,15 @@ import {
   zerogPinner,
   type Pinner,
 } from './pin-evidence.ts'
-import { assemblePublishCall, publishValidation, readValidationWithEvidence } from './validation-registry.ts'
+import {
+  assemblePublishCall,
+  publishValidation,
+  readCurrentValidation,
+  readValidationWithEvidence,
+} from './validation-registry.ts'
+import { AgentWatcher, describeFlip } from './watcher.ts'
+import { liveFingerprint } from '../gates/vet/live-fingerprint.ts'
+import { openWorker } from '../demo/mcp-call.ts'
 
 function flagValue(name: string): string | undefined {
   const index = process.argv.indexOf(`--${name}`)
@@ -158,10 +166,104 @@ async function publish(agentId: string, chainId: number): Promise<boolean> {
   return true
 }
 
+/**
+ * A5 as a rehearsal: watch a live endpoint, flip its surface, and see the poll notice on its own.
+ *
+ * The re-grade is the engine's, and the letter that comes back is whatever the new surface earns. The
+ * publish step stays the operator's, so this prints the grade rather than sending anything.
+ */
+async function watch(endpoint: string): Promise<boolean> {
+  const intervalMs = Number(flagValue('interval') ?? 5_000)
+  const rounds = Number(flagValue('rounds') ?? 6)
+  const flipAt = Number(flagValue('flip-at') ?? 2)
+  const flipTo = flagValue('flip-to') ?? 'drifted'
+  const token = process.env.DEMO_CONTROL_TOKEN?.trim()
+
+  console.log(`grading ${endpoint} once, to establish what the watcher is watching …`)
+  const baseline = await gradeAgent(cardForEndpoint(endpoint))
+  console.log(`  baseline grade ${baseline.grade}, fingerprint ${baseline.toolFingerprint.slice(0, 18)}…`)
+  console.log(`polling every ${intervalMs}ms for ${rounds} rounds, flipping to ${flipTo} at round ${flipAt}\n`)
+
+  const regraded: string[] = []
+  const watcher = new AgentWatcher(endpoint, {
+    intervalMs,
+    observe: async () => ({
+      declaredVersion: (await openWorker(endpoint)).serverVersion,
+      fingerprint: await liveFingerprint([endpoint]),
+    }),
+    regrade: async () => gradeAgent(cardForEndpoint(endpoint)),
+    onObservation: (observation) => {
+      const state =
+        observation.error !== null
+          ? `could not check: ${observation.error}`
+          : observation.changed
+            ? `CHANGED (${observation.changeKind})`
+            : 'no change'
+      console.log(`  [${observation.at}] ${observation.fingerprint?.slice(0, 18) ?? '(none)'}…  ${state}`)
+    },
+    onChange: (result) => {
+      console.log(`  re-graded: ${describeFlip(baseline.grade, result.grade)}, score ${result.score}`)
+      console.log(`  evidenceHash    ${result.evidenceHash}`)
+      console.log(`  toolFingerprint ${result.toolFingerprint}`)
+      regraded.push(result.grade)
+    },
+  })
+
+  for (let round = 1; round <= rounds; round += 1) {
+    if (round === flipAt && token !== undefined) {
+      const bump = flagValue('bump-version')
+      const response = await fetch(endpoint.replace(/\/mcp$/, '/variant'), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({ variant: flipTo, ...(bump === undefined ? {} : { version: bump }) }),
+      })
+      const state = (await response.json()) as { variant?: string; declaredVersion?: string }
+      console.log(
+        `  -- the target shipped an update: variant ${state.variant}, declared version ${state.declaredVersion} (HTTP ${response.status}) --`,
+      )
+    }
+    await watcher.check()
+    if (round < rounds) await new Promise((resolve) => setTimeout(resolve, intervalMs))
+  }
+  watcher.stop()
+
+  const observations = watcher.state().observations
+  console.log(
+    `\n${observations.length} observations, ${observations.filter((entry) => entry.changed).length} change(s) detected with no manual trigger`,
+  )
+  console.log(`grade before ${baseline.grade}, after ${regraded.at(-1) ?? '(no re-grade)'}`)
+  return regraded.length > 0
+}
+
 async function main(): Promise<void> {
   const [command, ...rest] = process.argv.slice(2)
   const chainId = Number(flagValue('chain') ?? identityChainId())
 
+  if (command === 'watch') {
+    process.exitCode = (await watch(rest[0])) ? 0 : 1
+    return
+  }
+  if (command === 'current') {
+    const current = await readCurrentValidation(
+      rest[0],
+      flagValue('validator') as `0x${string}` | undefined,
+    )
+    if (current === null) {
+      console.log('null: no usable record, which the gate reads as a refusal')
+      process.exitCode = 1
+      return
+    }
+    console.log(
+      `selected: block ${current.selected.block}, log ${current.selected.logIndex}, score ${current.record.score}`,
+    )
+    console.log(`history:  ${current.history.length} record(s), oldest first`)
+    for (const entry of current.history) {
+      console.log(
+        `  block ${entry.block} log ${entry.logIndex}  score ${entry.score}  ${entry.requestHash.slice(0, 18)}…  tx ${entry.txHash.slice(0, 18)}…`,
+      )
+    }
+    return
+  }
   if (command === 'publish') {
     try {
       process.exitCode = (await publish(rest[0], chainId)) ? 0 : 1
@@ -233,6 +335,8 @@ async function main(): Promise<void> {
       '  cli.ts publish <agentId> [--pin zerog|data] [--send] [--request-exists]',
       '  cli.ts read-validation <agentId> [--validator <address>]',
       '  cli.ts verify-evidence <uri> <expectedHash>',
+      '  cli.ts watch <mcp url> [--interval 5000] [--rounds 6] [--flip-at 2] [--flip-to drifted] [--bump-version 1.1.0]',
+      '  cli.ts current <agentId> [--validator <address>]',
       '  cli.ts methodology',
     ].join('\n'),
   )

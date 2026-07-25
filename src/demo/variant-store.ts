@@ -24,6 +24,27 @@ export interface VariantStore {
   write(variant: ToolSurfaceVariant): Promise<void>
 }
 
+/**
+ * The version the server declares about itself, in the MCP handshake.
+ *
+ * Deliberately separate from the variant, so each variant still moves exactly one axis. A version is
+ * metadata the server asserts, and an operator sets it explicitly: a target that ships an update and
+ * bumps its version is the ordinary case, and one that changes behaviour without bumping is the sneaky
+ * case. Beat 4 needs both, which is why this is its own knob rather than a side effect of a flip.
+ */
+export const DEFAULT_DECLARED_VERSION = '1.0.0'
+let declaredVersion = DEFAULT_DECLARED_VERSION
+
+export function currentDeclaredVersion(): string {
+  return declaredVersion
+}
+
+export function setDeclaredVersion(version: string): void {
+  const trimmed = version.trim()
+  if (trimmed.length === 0) throw new PreflightError('HARNESS', 'a declared version cannot be empty')
+  declaredVersion = trimmed
+}
+
 export const DEFAULT_VARIANT: ToolSurfaceVariant = 'baseline'
 
 export class MemoryVariantStore implements VariantStore {
@@ -65,6 +86,7 @@ export async function currentToolSurface(): Promise<ToolSurfaceVariant> {
 /** Test and stage support: back to the graded surface in one call. */
 export async function resetToolSurface(): Promise<void> {
   await store.write(DEFAULT_VARIANT)
+  declaredVersion = DEFAULT_DECLARED_VERSION
 }
 
 /**
