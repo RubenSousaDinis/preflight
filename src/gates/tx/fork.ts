@@ -5,6 +5,11 @@
  * do comes back as structured deltas. The mechanism is Foundry anvil, decided at the H+2 spike
  * (`spike/RESULT.md`) against the team's actual RPC and not revisited.
  *
+ * anvil is a binary, and a serverless runtime cannot spawn one, so a second backend in
+ * `rpc-fork.ts` implements the same handle over plain RPC for the deployed path. That is a backend
+ * behind the interface section 7 already required, not a change of mechanism: the runs driven from
+ * a machine we control still use anvil, and `activeForkBackend` says which one answered.
+ *
  * Two invariants this file owns, from `01-INTERFACES.md` section 7:
  *
  * - **A gate that cannot simulate blocks.** Every failure here throws `SimulationError`. Nothing
@@ -25,7 +30,9 @@ import { join } from 'node:path'
 import { getAddress, toHex } from 'viem'
 import { rpcUrlFor } from '../../shared/config.ts'
 import { SimulationError } from '../../shared/errors.ts'
-import type { Address, ChainId, Fork, Hex, PendingTx, SimulationResult } from '../../shared/types.ts'
+import type { Address, ChainId, Hex, PendingTx, SimulationResult } from '../../shared/types.ts'
+import { INJECTED_HEADROOM_WEI, type ForkBackend, type ForkHandle } from './fork-handle.ts'
+import { rpcForkAt } from './rpc-fork.ts'
 import {
   approvalDeltasFrom,
   balanceDeltasFrom,
@@ -42,7 +49,7 @@ import {
  * and tests nothing. The fork runs at a zero gas price so this headroom does not leak into the
  * native balance deltas as a gas charge.
  */
-export const INJECTED_HEADROOM_WEI = 10n ** 18n
+export { INJECTED_HEADROOM_WEI } from './fork-handle.ts'
 
 /** Explicit, so anvil skips estimation and a reverting call still lands as a mined failure. */
 const GAS_LIMIT = 30_000_000n
@@ -98,24 +105,7 @@ function terminate(child: ChildProcess): void {
   if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL')
 }
 
-/**
- * The `Fork` from `01-INTERFACES.md` section 7, plus the height it was taken at.
- *
- * The height is on the handle because a caller needs it before it runs anything: the drift check
- * fingerprints the callee at the fork block and has to happen before the transaction is simulated.
- * Additive, so anything typed against the frozen `Fork` still accepts this.
- */
-export interface ForkHandle extends Fork {
-  readonly block: bigint
-  /**
-   * A read only call against the fork's current state.
-   *
-   * Needed by the two-leg detector: reserves have to be read from the state the buy leg left
-   * behind, not from the chain, or the sell is quoted against a market that no longer exists.
-   * Additive, so anything typed against the frozen `Fork` still accepts this.
-   */
-  call(to: Address, data: Hex): Promise<Hex>
-}
+export type { ForkHandle } from './fork-handle.ts'
 
 /**
  * Start a fork of `chainId` and hand back the handle.
@@ -124,7 +114,7 @@ export interface ForkHandle extends Fork {
  * "what would this do now", and the block that was actually forked is recorded either way so the
  * answer stays reproducible for that block and state.
  */
-export async function forkAt(chainId: ChainId, block?: bigint): Promise<ForkHandle> {
+export async function anvilForkAt(chainId: ChainId, block?: bigint): Promise<ForkHandle> {
   const rpcUrl = rpcUrlFor(chainId)
   const port = await freePort()
   const url = `http://127.0.0.1:${port}`
@@ -201,6 +191,7 @@ export async function forkAt(chainId: ChainId, block?: bigint): Promise<ForkHand
 
   return {
     block: forkBlock,
+    backend: 'anvil',
     async run(tx: PendingTx): Promise<SimulationResult> {
       return runOnFork(url, forkBlock, chainId, tx)
     },
@@ -214,6 +205,25 @@ export async function forkAt(chainId: ChainId, block?: bigint): Promise<ForkHand
       terminate(child)
     },
   }
+}
+
+/**
+ * Which backend will run.
+ *
+ * Explicit configuration wins. Otherwise anvil, unless there is no process to spawn one from: on a
+ * serverless runtime the RPC backend is the only one that can answer at all, and a gate that cannot
+ * simulate blocks, so defaulting to anvil there would refuse every transaction for a reason that
+ * has nothing to do with the transaction.
+ */
+export function activeForkBackend(): ForkBackend {
+  const configured = process.env.PREFLIGHT_FORK_BACKEND
+  if (configured === 'anvil' || configured === 'rpc') return configured
+  return process.env.VERCEL === undefined ? 'anvil' : 'rpc'
+}
+
+/** Open a fork on whichever backend is active. Both satisfy the same handle. */
+export async function forkAt(chainId: ChainId, block?: bigint): Promise<ForkHandle> {
+  return activeForkBackend() === 'rpc' ? rpcForkAt(chainId, block) : anvilForkAt(chainId, block)
 }
 
 async function runOnFork(
