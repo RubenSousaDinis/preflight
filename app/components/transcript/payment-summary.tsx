@@ -18,6 +18,28 @@ function sumAmounts(values: string[]): bigint {
   }, 0n);
 }
 
+/**
+ * What settled, named as what settled.
+ *
+ * The rail arrives from the event stream, so a stub is called a stub and x402 is only claimed by a
+ * run that used it. Naming a protocol for a payment that did not happen on it is the failure this
+ * function exists to make impossible.
+ */
+type RailName = Extract<HarnessEvent, { type: "paid" }>["rail"];
+
+function settlementNote(rail: RailName | null): string {
+  switch (rail) {
+    case "hedera-x402":
+      return "Settled over x402 on Hedera, one payment per call.";
+    case "hedera-transfer":
+      return "Settled on Hedera as a native HBAR transfer, waiting for consensus before the call went out.";
+    case "stub":
+      return "Payments on this run are stubbed: the amounts and the receipt chain are real, and no funds moved.";
+    default:
+      return "Nothing was paid on this run.";
+  }
+}
+
 function Field({
   label,
   value,
@@ -56,7 +78,9 @@ export function PaymentSummary({ events }: { events: HarnessEvent[] }) {
 
   const spent = sumAmounts(paid.map((event) => event.amount));
   const held = BigInt(budget) - spent;
-  const rail = paid[0]?.rail ?? "hedera-x402";
+  // Read off the events, never defaulted. A fallback rail name describes a settlement that did not
+  // happen, on the one panel whose subject is whether money moved.
+  const rail = paid[0]?.rail ?? null;
 
   return (
     <div>
@@ -87,9 +111,9 @@ export function PaymentSummary({ events }: { events: HarnessEvent[] }) {
       </dl>
 
       <p className="mt-4 max-w-[46rem] text-[0.9rem] leading-relaxed text-ink/75">
-        x402 pays the hired agent on the {rail} rail, gated on the grade floor,
-        B or above, plus a live fingerprint match. It never pays for a grade, and
-        nobody can pay for one.
+        {settlementNote(rail)} The fee is gated on the grade floor, B or above,
+        plus a live fingerprint match, so it pays the agent that was hired. It
+        never pays for a grade, and nobody can pay for one.
       </p>
     </div>
   );

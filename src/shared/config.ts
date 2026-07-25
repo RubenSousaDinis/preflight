@@ -72,6 +72,20 @@ export const ENV = {
   hederaRpc: 'HEDERA_TESTNET_RPC_URL',
   hederaAccountId: 'HEDERA_TESTNET_ACCOUNT_ID',
   hederaPrivateKey: 'HEDERA_TESTNET_PRIVATE_KEY',
+  /**
+   * Which rail a hosted run settles on: `stub`, `hedera-transfer`, or `hedera-x402`.
+   *
+   * Absent means `stub`, and that default is the point rather than a convenience. Once a settling
+   * rail is selected, the Run button on a public page moves funds on every click, so selecting one
+   * is a deliberate act by the operator and never something a deployment falls into by omission.
+   */
+  demoRail: 'PREFLIGHT_DEMO_RAIL',
+  /**
+   * The account a settled call fee is paid to: the hired agent's own account, not the client's.
+   *
+   * Named here so the CLI and the hosted run read one variable rather than two spellings of it.
+   */
+  demoPayee: 'A_AGENT_HEDERA_ACCOUNT_ID',
   zerogStorageKey: 'ZEROG_STORAGE_PRIVATE_KEY',
   zerogComputeKey: 'ZEROG_COMPUTE_ROUTER_API_KEY',
   /** 0G Storage is where evidence is pinned (02-DECISIONS §12). Both halves are needed to upload. */

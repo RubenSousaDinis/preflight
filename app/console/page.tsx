@@ -15,6 +15,7 @@ import { MirrorLine } from "../components/receipts/mirror-line";
 import { ReceiptChain } from "../components/receipts/receipt-chain";
 import { LiveRun } from "../components/transcript/live-run";
 import { RugPull } from "../components/watch/rug-pull";
+import { readDemoRail } from "../lib/demo-rail";
 import { readDemoTarget } from "../lib/demo-target";
 import { readEnsMirror } from "../lib/ens";
 import { loadFirewallQueue } from "../lib/firewall";
@@ -132,6 +133,7 @@ export default async function ConsolePage({
                       fixtureEvents={events}
                       catalog={knownAgentsCatalog()}
                       defaultCandidateIds={RUN_CANDIDATE_IDS}
+                      rail={readDemoRail()}
                     />
                   </div>
                 </section>

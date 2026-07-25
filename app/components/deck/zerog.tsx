@@ -5,9 +5,13 @@ import { Card, Dim, Kicker, Slide, Terminal } from "./parts";
   The 0G track deck.
 
   Two integrations, both in the repo: 0G Compute runs the advisory source scan
-  (src/gates/tx/scan/routes.ts), and 0G Storage pins the evidence bundles
-  (src/validator/pin-evidence.ts). One boundary rule is what keeps both
-  outside the trust path.
+  (src/gates/tx/scan/routes.ts, stamped in scan/llm-scan.ts) and 0G Storage pins
+  the evidence bundles (src/validator/pin-evidence.ts). The values on slides 2
+  and 3 are the ones recorded in src/gates/tx/VERIFICATION.md and
+  src/validator/VERIFICATION.md.
+
+  One boundary rule is what keeps both outside the trust path, and it is enforced
+  in code twice: once where the flag is built, once where the verdict is composed.
 */
 
 const TOTAL = 3;
@@ -17,17 +21,17 @@ export const ZEROG_SLIDES: ReactNode[] = [
     <h1 className="mb-9 max-w-[1520px] font-display text-[92px] leading-[1.05] font-semibold tracking-[-2.2px]">
       0G runs the reading and holds the evidence.
     </h1>
-    <p className="mb-12 max-w-[1300px] text-[34px] leading-[1.45] text-dark-text">
-      Two integrations, and one rule that makes both of them fit. The advisory
-      source scan runs on 0G Compute. The evidence bundle behind every grade is
-      pinned to 0G Storage. Neither sits in the path that decides a verdict, and
-      that is by design rather than by accident.
+    <p className="mb-12 max-w-[1340px] text-[34px] leading-[1.45] text-dark-text">
+      The advisory source scan runs its inference on 0G Compute. The evidence
+      bundle behind every published grade is stored on 0G Storage and addressed
+      by its merkle root. Neither one can move a verdict, which is what makes
+      running them off our own machines cost nothing in trust.
     </p>
     <div className="flex flex-wrap gap-4.5">
       {[
-        "0G Compute: the advisory scan",
-        "0G Storage: evidence bundles",
-        "Content addressed",
+        "0G Compute: OpenAI-shaped router",
+        "0G Storage: merkle-rooted bundles",
+        "Neither in the trust path",
       ].map((chip) => (
         <span
           key={chip}
@@ -46,29 +50,40 @@ export const ZEROG_SLIDES: ReactNode[] = [
     </h2>
     <div className="mb-9 grid grid-cols-[1.05fr_0.95fr] items-start gap-12">
       <p className="text-[30px] leading-[1.55] text-muted">
-        Alongside the fork and the four checks, an advisory scan reads a
-        contract&apos;s source and proposes candidate traps in readable language.
-        Its inference runs on 0G Compute as the primary route, with a fallback if
-        the route or its findings are unusable.
+        Beside the fork and the four checks, an advisory scan reads a contract&apos;s
+        verified source and proposes candidate traps in readable language. Its
+        inference is a plain HTTP call to the 0G Compute router, which speaks the
+        OpenAI chat-completions shape, so no vendor SDK sits in the path.
       </p>
       <p className="border-l-4 border-accent py-2 pl-[30px] text-[27px] leading-[1.5]">
-        An advisory finding can never carry a blocking severity. Only a
-        simulator-confirmed finding moves a verdict, so a jailbroken all-clear
-        cannot suppress a deterministic flag.
+        Severity and provenance are stamped in one function, and the verdict
+        composer rejects a blocking flag from this route a second time. A
+        jailbroken all-clear cannot suppress a deterministic flag, and a
+        jailbroken alarm cannot manufacture one.
       </p>
     </div>
     <Terminal>
       <div>
-        <Dim>flag</Dim> bad-callee{"   "}
-        <Dim>severity</Dim> advisory{"   "}
-        <Dim>confirmedBy</Dim> llm-scan
+        POST router-api.0g.ai/v1/chat/completions{"   "}
+        <Dim>model 0gm-1.0-35b-a3b</Dim>
       </div>
       <div>
-        {"  "}rendered as advisory on its face, beside the blocking flags
+        {"  "}source passed as data inside {"<"}contract_source{">"}, never as
+        instruction
       </div>
       <div>
-        {"  "}verdict unchanged{"   "}
-        <span className="text-dark-ok">by construction</span>
+        {"  "}closed set of four ids{"   "}
+        <Dim>a fifth is discarded where a reader can see it, not renamed</Dim>
+      </div>
+      <div>
+        one stamp, one place{"   "}severity{" "}
+        <span className="text-dark-warn">advisory</span>, confirmedBy{" "}
+        <span className="text-dark-warn">llm-scan</span>
+      </div>
+      <div>
+        {"  "}the injection fixture argues its own case, the scan reported it,
+        and the call still{" "}
+        <span className="font-semibold text-dark-bad">BLOCKED</span>
       </div>
     </Terminal>
     <div className="mt-9">
@@ -87,28 +102,39 @@ export const ZEROG_SLIDES: ReactNode[] = [
     </h2>
     <div className="mb-9 grid grid-cols-2 gap-7">
       <Card
-        title="Pinned, then hashed into the record"
-        body="A grade is only falsifiable if the evidence behind it can be fetched. The bundle goes to 0G Storage, and the validation record onchain carries the hash of it, so a reader can fetch, hash, and compare rather than take the grade on faith."
+        title="Uploaded from memory, hashed once"
+        body="The bytes stored are the bytes that were canonicalized, with no re-serialization between them. The merkle root is computed before the upload, so the same bundle sent twice is recognized as already stored rather than read as a failure."
       />
       <Card
         title="The URI is not load-bearing"
-        body="The gate checks the hash, not the host. A data URI is the pre-authorized degrade, and it changes where the bundle lives without touching the reproducibility claim. That is what content addressing buys."
+        body="The gate checks the hash, not the host. A data URI is the pre-authorized degrade: it moves where the bundle lives without touching the reproducibility claim, and it is labelled when it runs. That is what content addressing buys."
       />
     </div>
     <Terminal>
       <div>
-        vetAgent: fetch the bundle{" "}
-        <span className="text-dark-ok">then hash it</span>
+        agent 8427{"   "}19757 bytes at root 0x75564b19…b0c2{"   "}
+        <Dim>chain 16602</Dim>
       </div>
       <div>
-        {"  "}hash does not match the record{" "}
+        {"  "}served by the 0G indexer at /file?root=…{"   "}
+        <Dim>fetched by a third party over HTTP</Dim>
+      </div>
+      <div>
+        vetAgent: fetch the bundle{" "}
+        <span className="text-dark-ok">then rehash it</span>, and compare against
+        the record
+      </div>
+      <div>
+        {"  "}hash does not match{" "}
         <span className="font-semibold text-dark-bad">REFUSE</span>
+        {"   "}
+        <Dim>never a fallback to the onchain score</Dim>
       </div>
       <div>
         {"  "}
         <Dim>
-          verified live: the gate names the two values that disagree rather than
-          falling back to the onchain score
+          seen live on the smoke record: the gate named the two values that
+          disagree
         </Dim>
       </div>
     </Terminal>

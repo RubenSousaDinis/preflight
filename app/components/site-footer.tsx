@@ -73,7 +73,7 @@ export async function SiteFooter() {
               <Link href="/console">Console</Link>
             </li>
             <li>
-              <Link href="/deck">Pitch deck</Link>
+              <Link href="/deck">Deck</Link>
             </li>
             <li>
               <Link href="/#method">How it works</Link>

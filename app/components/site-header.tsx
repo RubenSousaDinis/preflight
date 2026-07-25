@@ -29,7 +29,7 @@ export function SiteHeader() {
         <Container className="flex justify-between gap-4 py-2.5 font-data text-[11.5px] tracking-[0.08em] text-meta">
           <span>THE PRE-FLIGHT CHECK FOR AUTONOMOUS AGENTS</span>
           <span className="hidden sm:inline">
-            x402 ON HEDERA TESTNET / ERC-8004 ON BASE / FAIL CLOSED
+            x402 ON HEDERA / ERC-8004 ON BASE / FAIL CLOSED
           </span>
         </Container>
       </div>
@@ -59,7 +59,7 @@ export function SiteHeader() {
                     pathname === "/deck" ? "text-accent" : "text-muted"
                   }
                 >
-                  Pitch deck
+                  Deck
                 </Link>
               </li>
               <li>

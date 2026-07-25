@@ -1,4 +1,5 @@
 import { runTask } from "@/src/demo/harness";
+import { railFromEnv, type ConfiguredRail } from "@/src/demo/payment-rail";
 import type { TaskSpec } from "@/src/shared";
 
 /*
@@ -12,6 +13,11 @@ import type { TaskSpec } from "@/src/shared";
   No gate result is ever injected from here. runTask's own defaults do the vetting,
   so a gate that cannot reach a verdict produces a refusal in the stream rather
   than this route deciding anything.
+
+  The payment rail comes from the environment and is resolved before the first
+  byte is written. A misconfigured rail refuses the request; it never falls back
+  to the stub, because a deployment that meant to settle would then quietly stop
+  settling and the transcript would still read as a completed run.
 */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -61,13 +67,33 @@ export async function POST(request: Request) {
     );
   }
 
+  let configured: ConfiguredRail;
+  try {
+    configured = railFromEnv();
+  } catch (thrown) {
+    return Response.json(
+      {
+        code: "CONFIG",
+        reason:
+          thrown instanceof Error
+            ? thrown.message
+            : "the payment rail for this deployment could not be resolved, so no run was made.",
+        retryable: false,
+      },
+      { status: 500 },
+    );
+  }
+
   const spec: TaskSpec = { budget: DEFAULT_BUDGET, task, candidates };
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const encoder = new TextEncoder();
       try {
-        for await (const event of runTask(spec)) {
+        for await (const event of runTask(spec, {
+          rail: configured.rail,
+          payTo: configured.payTo,
+        })) {
           controller.enqueue(encoder.encode(encodeEvent(event)));
         }
       } catch (thrown) {

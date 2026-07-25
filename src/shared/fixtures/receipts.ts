@@ -55,7 +55,7 @@ const hiredSubject: JsonValue = {
 
 const paidSubject: JsonValue = {
   kind: 'payment',
-  rail: 'hedera-x402',
+  rail: 'hedera-transfer',
   amount: '100000000',
   note: 'one honest call, paid after the gate cleared it',
 }
