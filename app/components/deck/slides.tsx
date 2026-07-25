@@ -1,94 +1,19 @@
 import type { ReactNode } from "react";
-import { Mark } from "../mark";
+import { Card, Dim, Kicker, Slide, Terminal } from "./parts";
 
 /*
-  The eleven slides.
+  The main deck, ten slides.
 
-  Copy corrected against what this build actually does, because the design predates
-  the build and several of its claims are now wrong. Each correction is noted where
-  it lands. A deck that claims more than the console can show is the fastest way to
-  lose a room that then goes and looks.
+  Copy is kept to what this build does. The design predates the build, so several
+  of its claims were corrected as the slides were written; each correction is noted
+  where it lands.
 */
 
-const TOTAL = 11;
-
-function Slide({
-  tone,
-  eyebrow,
-  index,
-  children,
-}: {
-  tone: "light" | "dark";
-  eyebrow: string;
-  index: number;
-  children: ReactNode;
-}) {
-  const dark = tone === "dark";
-  return (
-    <section
-      className={`flex h-full w-full flex-col ${dark ? "bg-ink text-paper" : "bg-paper text-ink"}`}
-      style={{ padding: dark ? "110px 130px 90px" : "90px 130px 80px" }}
-    >
-      <header className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <span className={dark ? "text-paper" : "text-ink"}>
-            <Mark width={dark ? 58 : 52} />
-          </span>
-          <span className="font-display text-[30px] font-semibold">
-            preflight
-          </span>
-        </div>
-        <span
-          className={`font-data text-[22px] tracking-[0.14em] ${dark ? "text-dark-faint" : "text-meta"}`}
-        >
-          {eyebrow}
-        </span>
-      </header>
-
-      <div className="flex flex-1 flex-col justify-center">{children}</div>
-
-      <footer
-        className={`flex justify-between font-data text-[22px] ${dark ? "text-dark-faint" : "text-meta"}`}
-      >
-        <span>ETHGlobal Lisbon 2026</span>
-        <span>
-          {String(index).padStart(2, "0")} / {TOTAL}
-        </span>
-      </footer>
-    </section>
-  );
-}
-
-function Terminal({ children }: { children: ReactNode }) {
-  return (
-    <div className="rounded-[8px] bg-ink px-[46px] py-[38px] font-data text-[26px] leading-[1.85] text-dark-terminal">
-      {children}
-    </div>
-  );
-}
-
-function Dim({ children }: { children: ReactNode }) {
-  return <span className="text-dark-faint">{children}</span>;
-}
-
-function Card({ title, body }: { title: string; body: string }) {
-  return (
-    <div className="rounded-[6px] border border-rule bg-panel px-[42px] py-10">
-      <p className="mb-3 text-[31px] font-semibold text-accent">{title}</p>
-      <p className="text-[26px] leading-[1.5] text-muted">{body}</p>
-    </div>
-  );
-}
-
-function Kicker({ children }: { children: ReactNode }) {
-  return (
-    <p className="font-display text-[40px] tracking-[-0.5px]">{children}</p>
-  );
-}
+const TOTAL = 10;
 
 export const SLIDES: ReactNode[] = [
   // 01
-  <Slide key="01" tone="dark" eyebrow="ETHGLOBAL LISBON 2026 / CLASSIC TRACK" index={1}>
+  <Slide key="01" tone="dark" eyebrow="ETHGLOBAL LISBON 2026 / CLASSIC TRACK" index={1} total={TOTAL}>
     <h1 className="mb-9 max-w-[1500px] font-display text-[104px] leading-[1.04] font-semibold tracking-[-2.5px]">
       The pre-flight check for autonomous agents.
     </h1>
@@ -110,7 +35,7 @@ export const SLIDES: ReactNode[] = [
   </Slide>,
 
   // 02
-  <Slide key="02" tone="light" eyebrow="THE PROBLEM" index={2}>
+  <Slide key="02" tone="light" eyebrow="THE PROBLEM" index={2} total={TOTAL}>
     <h2 className="mb-8 font-display text-[72px] leading-[1.08] font-semibold tracking-[-1.6px]">
       Agents will hire, pay, and sign.
       <br />
@@ -159,7 +84,7 @@ export const SLIDES: ReactNode[] = [
   </Slide>,
 
   // 03
-  <Slide key="03" tone="light" eyebrow="WHY NOW" index={3}>
+  <Slide key="03" tone="light" eyebrow="WHY NOW" index={3} total={TOTAL}>
     <h2 className="mb-14 font-display text-[72px] leading-[1.08] font-semibold tracking-[-1.6px]">
       The rails just shipped.{" "}
       <span className="text-accent">The safety layer did not.</span>
@@ -199,7 +124,7 @@ export const SLIDES: ReactNode[] = [
   </Slide>,
 
   // 04
-  <Slide key="04" tone="light" eyebrow="WHAT WE BUILT / ALL NEW CODE" index={4}>
+  <Slide key="04" tone="light" eyebrow="WHAT WE BUILT / ALL NEW CODE" index={4} total={TOTAL}>
     <h2 className="mb-14 font-display text-[72px] leading-[1.08] font-semibold tracking-[-1.6px]">
       A validator, two gates, and a console.
     </h2>
@@ -224,7 +149,7 @@ export const SLIDES: ReactNode[] = [
   </Slide>,
 
   // 05
-  <Slide key="05" tone="light" eyebrow="HOW IT WORKS" index={5}>
+  <Slide key="05" tone="light" eyebrow="HOW IT WORKS" index={5} total={TOTAL}>
     <h2 className="mb-10 font-display text-[72px] leading-[1.08] font-semibold tracking-[-1.6px]">
       Run it, watch it, grade it,{" "}
       <span className="text-accent">attest it.</span>
@@ -268,50 +193,8 @@ export const SLIDES: ReactNode[] = [
     </div>
   </Slide>,
 
-  // 06 corrected: the attestations were dropped as an input on 2026-07-24.
-  <Slide key="06" tone="light" eyebrow="DISCLOSED PRIOR WORK" index={6}>
-    <h2 className="mb-9 font-display text-[72px] leading-[1.08] font-semibold tracking-[-1.6px]">
-      We stand on an open engine.{" "}
-      <span className="text-accent">The rest is new.</span>
-    </h2>
-    <p className="mb-13 max-w-[1560px] text-[31px] leading-[1.5] text-muted">
-      Two prior inputs, both disclosed. The behavioral grading engine is open
-      source, Apache-2.0, and consumed from npm the way any third party would. The
-      planning notes and the design mockups for this site were written before the
-      event. No prior grades are read and no prior attestation is trusted: every
-      grade on screen is produced here and posted here. Every line of project code
-      starts at the clock.
-    </p>
-    <div className="mb-10 grid grid-cols-4 overflow-hidden rounded-[6px] border border-rule bg-panel">
-      {[
-        ["npm", "the engine, consumed as a library", false],
-        ["Apache-2.0", "open source, anyone can re-run it", false],
-        ["2", "disclosed prior inputs, both named", true],
-        ["0", "lines of prior project code", true],
-      ].map(([value, note, accent], position) => (
-        <div
-          key={String(value)}
-          className={`px-10 py-9 ${position < 3 ? "border-r border-rule" : ""}`}
-        >
-          <p
-            className={`font-data text-[44px] font-semibold ${accent ? "text-accent" : ""}`}
-          >
-            {value}
-          </p>
-          <p className="mt-2 text-[24px] text-muted">{note}</p>
-        </div>
-      ))}
-    </div>
-    <p className="max-w-[1560px] font-data text-[24px] leading-[1.6] text-meta">
-      Reproducibility is the trust model: a false grade can be disproven by
-      re-running the open engine, which is not the same as anyone having re-run it.
-      Disclosed limit: a target that detects the test and behaves during it
-      (evasion).
-    </p>
-  </Slide>,
-
-  // 07 corrected: the rail is HBAR on Hedera Testnet, not USDC on Base.
-  <Slide key="07" tone="light" eyebrow="LIVE DEMO / AGENT BOUNDARY" index={7}>
+  // 06 corrected: the rail is HBAR on Hedera Testnet, not USDC on Base.
+  <Slide key="06" tone="light" eyebrow="LIVE DEMO / AGENT BOUNDARY" index={6} total={TOTAL}>
     <p className="mb-3.5 font-data text-[25px] tracking-[0.18em] text-accent">
       BEAT 1
     </p>
@@ -366,8 +249,8 @@ export const SLIDES: ReactNode[] = [
     </Kicker>
   </Slide>,
 
-  // 08 corrected: staged fixtures fork Base Sepolia, and they are named as staged.
-  <Slide key="08" tone="light" eyebrow="LIVE DEMO / CONTRACT BOUNDARY" index={8}>
+  // 07 corrected: staged fixtures fork Base Sepolia, and they are named as staged.
+  <Slide key="07" tone="light" eyebrow="LIVE DEMO / CONTRACT BOUNDARY" index={7} total={TOTAL}>
     <p className="mb-3.5 font-data text-[25px] tracking-[0.18em] text-accent">
       BEAT 2
     </p>
@@ -414,8 +297,8 @@ export const SLIDES: ReactNode[] = [
     </Kicker>
   </Slide>,
 
-  // 09 corrected: no invented leaderboard counts; the board reads the registry.
-  <Slide key="09" tone="light" eyebrow="LIVE DEMO / PARTICIPATORY" index={9}>
+  // 08 corrected: no invented leaderboard counts; the board reads the registry.
+  <Slide key="08" tone="light" eyebrow="LIVE DEMO / PARTICIPATORY" index={8} total={TOTAL}>
     <p className="mb-3.5 font-data text-[25px] tracking-[0.18em] text-accent">
       BEAT 3
     </p>
@@ -456,8 +339,8 @@ export const SLIDES: ReactNode[] = [
     </p>
   </Slide>,
 
-  // 10 corrected: one client, and the drop comes from the live recheck.
-  <Slide key="10" tone="light" eyebrow="LIVE DEMO / SELF-UPDATING TRUST" index={10}>
+  // 09 corrected: one client, and the drop comes from the live recheck.
+  <Slide key="09" tone="light" eyebrow="LIVE DEMO / SELF-UPDATING TRUST" index={9} total={TOTAL}>
     <p className="mb-3.5 font-data text-[25px] tracking-[0.18em] text-accent">
       BEAT 4
     </p>
@@ -496,7 +379,7 @@ export const SLIDES: ReactNode[] = [
   </Slide>,
 
   // 11
-  <Slide key="11" tone="dark" eyebrow="AFTER THE WEEKEND" index={11}>
+  <Slide key="10" tone="dark" eyebrow="AFTER THE WEEKEND" index={10} total={TOTAL}>
     <h2 className="mb-10 max-w-[1500px] font-display text-[84px] leading-[1.06] font-semibold tracking-[-2px]">
       Built at the event.{" "}
       <span className="text-dark-accent">Useful on Monday.</span>
@@ -510,8 +393,8 @@ export const SLIDES: ReactNode[] = [
     <div className="flex flex-wrap gap-4.5">
       {[
         "github.com/RubenSousaDinis/preflight",
-        "@polygraphso/litmus",
         "preflight_agent / preflight_tx",
+        "ERC-8004 on Base Sepolia",
       ].map((chip) => (
         <span
           key={chip}
