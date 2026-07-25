@@ -20,6 +20,15 @@
   --color-grade-f: var(--pf-grade-f);
   --color-subtle: var(--pf-subtle);
   --color-selected: var(--pf-selected);
+  --color-dark-accent: var(--pf-dark-accent);
+  --color-dark-accent-soft: var(--pf-dark-accent-soft);
+  --color-dark-text: var(--pf-dark-text);
+  --color-dark-faint: var(--pf-dark-faint);
+  --color-dark-rule: var(--pf-dark-rule);
+  --color-dark-terminal: var(--pf-dark-terminal);
+  --color-dark-ok: var(--pf-dark-ok);
+  --color-dark-bad: var(--pf-dark-bad);
+  --color-dark-warn: var(--pf-dark-warn);
   --color-muted: var(--pf-muted);
   --color-meta: var(--pf-meta);
   --color-on-dark: var(--pf-on-dark);
@@ -65,5 +74,39 @@
       animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
     }
+  }
+}
+
+/*
+  The deck prints one slide per page.
+
+  The stage scales a fixed 1920 by 1080 canvas to fit a screen; print wants the
+  opposite, so every slide is laid flat at its own size and paginated. That is what
+  makes "Download PDF" the browser's own print dialog rather than a second renderer.
+*/
+@media print {
+  @page {
+    size: 1920px 1080px;
+    margin: 0;
+  }
+
+  .deck-chrome {
+    display: none !important;
+  }
+
+  .deck-viewport {
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .deck-canvas {
+    transform: none !important;
+    position: static !important;
+  }
+
+  .deck-slide {
+    display: flex !important;
+    break-after: page;
+    page-break-after: always;
   }
 }

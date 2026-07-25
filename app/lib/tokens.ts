@@ -50,6 +50,24 @@ export const layout = {
   gutter: "32px",
 } as const;
 
+/**
+ * The deck's dark slides.
+ *
+ * A separate group because ink-on-paper inverts badly: the accent has to brighten
+ * to hold against #101613, and the terminal blocks need their own ok/bad/warn.
+ */
+export const dark = {
+  accent: "#14a08f",
+  accentSoft: "#7fd6c9",
+  text: "#b9c2ba",
+  faint: "#8b958d",
+  rule: "#39423b",
+  terminal: "#d6ddd6",
+  ok: "#57b877",
+  bad: "#e06552",
+  warn: "#d9a13c",
+} as const;
+
 export const grade = {
   gradeA: "#2f5132",
   gradeB: "#4f6b36",
@@ -124,6 +142,15 @@ const declarations: ReadonlyArray<readonly [string, string]> = [
   ["--pf-grade-f", grade.gradeF],
   ["--pf-subtle", surface.subtle],
   ["--pf-selected", surface.selected],
+  ["--pf-dark-accent", dark.accent],
+  ["--pf-dark-accent-soft", dark.accentSoft],
+  ["--pf-dark-text", dark.text],
+  ["--pf-dark-faint", dark.faint],
+  ["--pf-dark-rule", dark.rule],
+  ["--pf-dark-terminal", dark.terminal],
+  ["--pf-dark-ok", dark.ok],
+  ["--pf-dark-bad", dark.bad],
+  ["--pf-dark-warn", dark.warn],
   ["--pf-muted", text.muted],
   ["--pf-meta", text.meta],
   ["--pf-on-dark", text.onDark],
