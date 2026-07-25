@@ -13,11 +13,39 @@ export const surface = {
   panel: "#fbfcf8",
   band: "#e4e9e2",
   rule: "#ccd3cc",
+  /** The quieter panel fill, for inline code and chips. */
+  subtle: "#f7f8f3",
 } as const;
 
 export const text = {
   ink: "#101613",
   accent: "#0e5f56",
+  /** Secondary prose. Most body copy that is not a heading sits here. */
+  muted: "#4f5a54",
+  /** Mono labels, eyebrows, and meta rules. */
+  meta: "#7c867e",
+  /** Body copy on the ink band, where ink itself would vanish. */
+  onDark: "#a9b2aa",
+  /** The accent under a pointer. */
+  accentHover: "#0a4a43",
+} as const;
+
+/**
+ * Corners and the content column.
+ *
+ * Both come from the design rather than from taste: 3px on controls, 4px on cards,
+ * and a 1080px column with 32px gutters. Square corners and a wider column were my
+ * invention and read as a different product.
+ */
+export const radius = {
+  control: "3px",
+  card: "4px",
+  pill: "999px",
+} as const;
+
+export const layout = {
+  maxWidth: "1080px",
+  gutter: "32px",
 } as const;
 
 export const grade = {
@@ -92,6 +120,15 @@ const declarations: ReadonlyArray<readonly [string, string]> = [
   ["--pf-grade-c", grade.gradeC],
   ["--pf-grade-d", grade.gradeD],
   ["--pf-grade-f", grade.gradeF],
+  ["--pf-subtle", surface.subtle],
+  ["--pf-muted", text.muted],
+  ["--pf-meta", text.meta],
+  ["--pf-on-dark", text.onDark],
+  ["--pf-accent-hover", text.accentHover],
+  ["--pf-radius-control", radius.control],
+  ["--pf-radius-card", radius.card],
+  ["--pf-max-width", layout.maxWidth],
+  ["--pf-gutter", layout.gutter],
   ["--pf-display", type.display],
   ["--pf-body", type.body],
   ["--pf-data", type.data],
