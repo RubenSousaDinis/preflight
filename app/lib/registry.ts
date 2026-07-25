@@ -3,7 +3,7 @@ import { validationRegistry, validatorAddress } from "@/src/shared/config";
 import { gradeForScore } from "@/src/shared";
 import type { AgentId, Grade, ValidationRecord } from "@/src/shared";
 import { readValidation } from "@/src/validator/validation-registry";
-import { ensNameFor } from "./ens";
+import { ensNameIfRegistered } from "./ens";
 import { toRenderableError, type RenderableError } from "./errors";
 
 /**
@@ -62,7 +62,10 @@ export function isListable(
   return true;
 }
 
-function entryFor(record: ValidationRecord): BoardEntry | null {
+function entryFor(
+  record: ValidationRecord,
+  ensName: string | null,
+): BoardEntry | null {
   // The letter comes back from the onchain score and is never recomputed here. A
   // score off the 25 point scale did not come from this methodology, and guessing
   // a letter for it would put an unearned grade on a big screen.
@@ -72,7 +75,7 @@ function entryFor(record: ValidationRecord): BoardEntry | null {
     agentId: record.agentId,
     record,
     grade,
-    ensName: ensNameFor(record.agentId),
+    ensName,
   };
 }
 
@@ -104,16 +107,18 @@ export async function readBoard(agentIds: AgentId[]): Promise<BoardRead> {
   try {
     const { chainId } = validationRegistry();
     const validator = validatorAddress();
-    const [block, records] = await Promise.all([
+    const [block, records, ensNames] = await Promise.all([
       readerFor(chainId).blockNumber(),
       Promise.all(wanted.map((id) => readValidation(id, validator))),
+      Promise.all(wanted.map((id) => ensNameIfRegistered(id))),
     ]);
 
     const entries: BoardEntry[] = [];
     const unlisted: AgentId[] = [];
     for (let index = 0; index < wanted.length; index += 1) {
       const record = records[index];
-      const entry = record === null ? null : entryFor(record);
+      const entry =
+        record === null ? null : entryFor(record, ensNames[index] ?? null);
       if (entry === null) {
         unlisted.push(wanted[index]);
         continue;
@@ -140,13 +145,35 @@ export async function readBoard(agentIds: AgentId[]): Promise<BoardRead> {
 }
 
 /**
- * The subjects the board is about: the URL first, then a configured default.
+ * The demo agents this stage is about when nobody has asked for a different set.
+ *
+ * The board has no enumeration: a record is found by agent id, so an empty subject
+ * list is an empty board even when the registry is full. These four are the ones D1
+ * registered and A3b published; they are the ordinary contents of the leaderboard
+ * until the URL or the environment asks for something else.
+ */
+export const DEFAULT_BOARD_AGENT_IDS: readonly AgentId[] = [
+  "8427",
+  "8430",
+  "8436",
+  "8437",
+];
+
+/**
+ * The subjects the board is about: the URL first, then a configured default, then
+ * the demo set.
  *
  * Read from process.env directly rather than through the shared config, because
- * this is which rows a screen shows and not a value any verdict depends on.
+ * this is which rows a screen shows and not a value any verdict depends on. An
+ * empty `?agents=` is deliberate and lists nobody; an absent query falls through
+ * to the environment and then to the demo set, so the bare `/console?view=board`
+ * is never an empty claim about an empty registry.
  */
 export function boardSubjects(fromUrl: string | undefined): AgentId[] {
-  const raw = fromUrl ?? process.env.PREFLIGHT_BOARD_AGENT_IDS ?? "";
+  const raw =
+    fromUrl !== undefined
+      ? fromUrl
+      : (process.env.PREFLIGHT_BOARD_AGENT_IDS ?? DEFAULT_BOARD_AGENT_IDS.join(" "));
   return raw
     .split(/[\s,]+/)
     .map((value) => value.trim())

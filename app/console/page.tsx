@@ -73,7 +73,13 @@ export default async function ConsolePage({
       ? await Promise.all([loadFloor(), loadTranscript(), readDemoTarget()])
       : [null, null, null];
   const queue = view === "firewall" ? await loadFirewallQueue() : null;
-  const board = view === "board" ? await readBoard(boardSubjects(agents)) : null;
+  const board =
+    view === "board"
+      ? await Promise.all([
+          readBoard(boardSubjects(agents)),
+          readEnsMirror(boardSubjects(agents)[0] ?? ""),
+        ]).then(([entries, mirror]) => ({ entries, mirror }))
+      : null;
   // The ENS mirror is read for the first subject the board is about, which is the
   // agent the demo resolves on stage. It never throws and it is never awaited by
   // anything that decides something.
@@ -151,7 +157,10 @@ export default async function ConsolePage({
                 meta="ERC-8004 VALIDATION REGISTRY / READ DIRECT, NO INDEXER"
                 lede="Every grade this validator has published for the agents this board was asked about. Anyone can re-run the harness against the evidence hash."
               />
-              <Leaderboard board={board} />
+              <Leaderboard board={board.entries} />
+              <div className="mt-5">
+                <EnsMirrorLine mirror={board.mirror} />
+              </div>
               <div className="mt-3">
                 <BoardRefresh />
               </div>

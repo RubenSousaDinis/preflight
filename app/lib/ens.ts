@@ -64,6 +64,30 @@ export function ensNameFor(agentId: AgentId): string | null {
   }
 }
 
+/**
+ * The name only when it actually exists on the configured registry.
+ *
+ * A derived name with no owner and no resolver is a string about a name that
+ * answers nothing. The board and the floor refuse to put that on a row: they
+ * wait until the registry names a resolver for the node, which is the same
+ * moment the subname step finished.
+ */
+export async function ensNameIfRegistered(
+  agentId: AgentId,
+): Promise<string | null> {
+  try {
+    const config = ensConfig();
+    if (config === null) return null;
+    const read = await readAgentRecords(agentId, {
+      timeoutMs: 4_000,
+      keys: [],
+    });
+    return read.resolver === null ? null : read.name;
+  } catch {
+    return null;
+  }
+}
+
 /** The records on an agent's name. Never throws. */
 export async function readEnsMirror(agentId: AgentId): Promise<EnsMirror> {
   let name: string | null = null;

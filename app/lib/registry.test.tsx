@@ -87,14 +87,22 @@ test("the board asks about nobody until it is told who", async () => {
   assert.equal(board.readAtBlock, null, "no read means no claimed height");
 });
 
-test("subjects come from the url first, then the configured default", () => {
+test("subjects come from the url first, then the configured default, then the demo set", () => {
   assert.deepEqual(boardSubjects("8427, 8428  8429"), [
     "8427",
     "8428",
     "8429",
   ]);
-  assert.deepEqual(boardSubjects(""), []);
-  assert.ok(boardSubjects(undefined).length >= 0);
+  assert.deepEqual(
+    boardSubjects(""),
+    [],
+    "an empty agents= query lists nobody on purpose",
+  );
+  assert.deepEqual(
+    boardSubjects(undefined),
+    ["8427", "8430", "8436", "8437"],
+    "the bare board is the four demo agents, not an empty claim",
+  );
 });
 
 test("the board always renders the validator and the height it read at", () => {
