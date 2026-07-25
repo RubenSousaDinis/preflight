@@ -59,6 +59,7 @@ function harness(overrides: Partial<TxGuardDeps> & { simulation?: SimulationResu
   const state = { released: 0 }
   const fork: ForkHandle = {
     block: 500n,
+    backend: 'anvil',
     async run(tx) {
       runs.push(tx)
       return overrides.simulation ?? EMPTY_SIM
@@ -114,6 +115,7 @@ test('a simulation that dies mid run blocks rather than returning partial deltas
   const h = harness()
   h.deps.forkAt = async () => ({
     block: 500n,
+    backend: 'anvil' as const,
     async run(): Promise<SimulationResult> {
       throw new SimulationError('the fork rejected debug_traceTransaction: socket hang up')
     },

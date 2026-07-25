@@ -79,6 +79,7 @@ function stubFork(plan: ForkPlan): { fork: ForkHandle; runs: PendingTx[] } {
   const legs = [...(plan.legs ?? [])]
   const fork: ForkHandle = {
     block: 500n,
+    backend: 'anvil',
     async run(tx) {
       runs.push(tx)
       if (runs.length === 1) return plan.buy ?? boughtSim()
