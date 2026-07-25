@@ -77,6 +77,24 @@ test('a candidate naming a fifth risk is discarded, and the discard is reported'
   assert.deepEqual(report.discarded, ['reentrancy'])
 })
 
+test('an id of the wrong type is discarded visibly, not dropped on the way in', async () => {
+  // Observed against a real model: it answered with "id": 1 rather than one of the four strings.
+  // Dropping that during parsing made a real finding vanish with nothing recorded, which is how a
+  // closed set comes to look leaky. It is now discarded at the stamp, where the discard is counted.
+  assert.deepEqual(parseCandidates('{"findings":[{"id":1,"title":"t","detail":"d"}]}'), [
+    { id: '1', title: 't', detail: 'd' },
+  ])
+
+  const report = await scanAddress(
+    84532,
+    ADDRESS,
+    routeReturning([{ id: '1', title: 't', detail: 'd' }]),
+    sourceIs(SOURCE),
+  )
+  assert.deepEqual(report.flags, [])
+  assert.deepEqual(report.discarded, ['1'])
+})
+
 test('done-when 4: no published source is a named state, not a clean result', async () => {
   const report = await scanAddress(84532, ADDRESS, routeReturning([]), sourceIs(null))
 
