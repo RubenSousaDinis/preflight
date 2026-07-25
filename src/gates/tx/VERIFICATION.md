@@ -4,8 +4,8 @@ Every value below was observed during the build, not predicted. Blocks are Base 
 unless the line says Base mainnet (8453). Sections match the verification-log blocks in each task
 doc, so they can be pasted across one at a time.
 
-Three commands reproduce the live parts: `npm run d4` (unseen run, reads only), `npm run b8`
-(divergence rehearsal, sends), `npm run d5c` (broadcast path, sends).
+Three commands reproduce the live parts: `npm run check:unseen` (unseen run, reads only), `npm run check:divergence`
+(divergence rehearsal, sends), `npm run check:broadcast` (broadcast path, sends).
 
 ---
 
@@ -194,7 +194,7 @@ architectural check: a scan route that complies with the injection and reports n
 
 ## D4, the unseen run, Base mainnet (8453)
 
-Reads only. `npm run d4` reproduces all of it.
+Reads only. `npm run check:unseen` reproduces all of it.
 
 ```
 known-bad address: 0x2aF864fb54b55900Cd58d19c7102d9e4FA8D84a3 (Grand Base)

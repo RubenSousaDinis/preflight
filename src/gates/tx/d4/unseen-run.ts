@@ -5,7 +5,7 @@
  * puts code the team did not write through the same gate the staged fixtures went through. Nothing
  * here is a new detector: the four flags are closed, and what changes for this run is the input.
  *
- * Run it: `npm run d4`
+ * Run it: `npm run check:unseen`
  *
  * It prints, per input, the verdict, the flags, the reason, and the reproducible tuple, then
  * re-runs each verdict pinned at the block it first reported and checks the two agree. That last

@@ -1,7 +1,7 @@
 /**
  * B8's rehearsal: land two transactions on Base Sepolia and compare each against what was predicted.
  *
- * Run it: `npm run b8`
+ * Run it: `npm run check:divergence`
  *
  * The first is expected to match. The second is a **deliberately forced divergence**: the check runs
  * against the market as it stands, then somebody else trades before the transaction lands, and the
@@ -9,7 +9,7 @@
  * exactly what the UI says it does, and seeing it here means nobody meets it for the first time on
  * stage.
  *
- * This one sends real transactions from the funded Base Sepolia wallet, unlike `npm run d4`, which
+ * This one sends real transactions from the funded Base Sepolia wallet, unlike `npm run check:unseen`, which
  * only reads. It also moves the clean pair's price by design, which is the whole point of the second
  * case and is worth knowing before a rehearsal that expects untouched reserves.
  */

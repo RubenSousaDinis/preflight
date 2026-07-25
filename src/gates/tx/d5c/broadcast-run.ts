@@ -2,7 +2,7 @@
  * D5c end to end: gate a transaction, then broadcast it through whichever endpoint its chain
  * actually has, and print the label that comes back.
  *
- * Run it: `npm run d5c`
+ * Run it: `npm run check:broadcast`
  *
  * It sends one real, zero value transaction from the funded Base Sepolia wallet to itself, which
  * costs gas and moves nothing. The point is the label: on Base there is no protected route
