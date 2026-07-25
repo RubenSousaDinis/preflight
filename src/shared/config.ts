@@ -111,6 +111,35 @@ export const ENV = {
    * topic is a mirror and never a source, so nothing in a verdict path reads this.
    */
   hcsReceiptTopic: 'HCS_RECEIPT_TOPIC_ID',
+  /**
+   * Where the grade mirror writes its text records, optional and all three together.
+   *
+   * The chain of the ENS-compatible registry the subnames live under. There is no default: a mirror
+   * that guessed its chain would write records about the right agent under the wrong name, which is
+   * the failure this whole file exists to prevent. Absent means no mirror runs, which costs nothing,
+   * because the ValidationRegistry is the record either way.
+   */
+  ensChainId: 'ENS_CHAIN_ID',
+  /** The ENS registry, or a fork of it such as the Basenames Registry. */
+  ensRegistryAddress: 'ENS_REGISTRY_ADDRESS',
+  /** The validator-owned parent the agent subnames hang off, for example `preflight.base.eth`. */
+  ensParentName: 'ENS_PARENT_NAME',
+  /**
+   * The resolver set on new subnames, optional.
+   *
+   * Absent means the parent's own resolver is read from the registry and reused, which is what a
+   * subname should inherit anyway. It is configurable because a parent with no resolver set has
+   * nothing to inherit, and that case has to be nameable rather than silently resolver-less.
+   */
+  ensResolverAddress: 'ENS_RESOLVER_ADDRESS',
+  /**
+   * An RPC override for the ENS chain, optional.
+   *
+   * Defaults to the configured endpoint for `ENS_CHAIN_ID`. It exists so the mirror can point at a
+   * chain this project has no ChainKey for, L1 included, without adding one: nothing in a verdict
+   * path may resolve through ENS configuration.
+   */
+  ensRpcUrl: 'ENS_RPC_URL',
 } as const
 
 function env(name: string): string | undefined {
@@ -207,4 +236,70 @@ export function fixtureDeployerAddress(): Address {
     throw new ConfigError(`${ENV.fixtureDeployerAddress} is not a 0x address`)
   }
   return address as Address
+}
+
+export interface EnsConfig {
+  chainId: ChainId
+  registry: Address
+  /** The parent name, normalized by the caller that hashes it. */
+  parent: string
+  /** Null means "reuse the parent's resolver", which the client reads from the registry. */
+  resolver: Address | null
+}
+
+/**
+ * Where the grade mirror writes, or null when it is switched off.
+ *
+ * Three variables, all of them or none of them. None is the ordinary state and returns null, the
+ * `hcsReceiptTopic` pattern: no mirror runs and nothing is lost, since the registry holds the grade.
+ * A partial set throws instead of filling in a default, the `validationRegistry()` pattern: half a
+ * target is a target, and it is the wrong one.
+ */
+export function ensConfig(): EnsConfig | null {
+  const rawChainId = optionalEnv(ENV.ensChainId)
+  const rawRegistry = optionalEnv(ENV.ensRegistryAddress)
+  const parent = optionalEnv(ENV.ensParentName)
+
+  const required = [
+    [ENV.ensChainId, rawChainId],
+    [ENV.ensRegistryAddress, rawRegistry],
+    [ENV.ensParentName, parent],
+  ] as const
+  const missing = required.filter(([, value]) => value === undefined).map(([name]) => name)
+  if (missing.length === required.length) return null
+  if (missing.length > 0) {
+    throw new ConfigError(
+      `the ENS grade mirror needs ${required.map(([name]) => name).join(', ')} set together, and ${missing.join(' and ')} ${missing.length === 1 ? 'is' : 'are'} missing`,
+    )
+  }
+
+  const chainId = Number(rawChainId)
+  if (!Number.isInteger(chainId)) {
+    throw new ConfigError(`${ENV.ensChainId} is not an integer chain id`)
+  }
+  if (!rawRegistry!.startsWith('0x')) {
+    throw new ConfigError(`${ENV.ensRegistryAddress} is not a 0x address`)
+  }
+  if (!parent!.includes('.')) {
+    throw new ConfigError(
+      `${ENV.ensParentName} is ${JSON.stringify(parent)}, which is a label rather than a name, so no subname could be derived from it`,
+    )
+  }
+
+  const rawResolver = optionalEnv(ENV.ensResolverAddress)
+  if (rawResolver !== undefined && !rawResolver.startsWith('0x')) {
+    throw new ConfigError(`${ENV.ensResolverAddress} is not a 0x address`)
+  }
+
+  return {
+    chainId,
+    registry: rawRegistry as Address,
+    parent: parent!,
+    resolver: (rawResolver as Address | undefined) ?? null,
+  }
+}
+
+/** The endpoint the mirror talks to. The override keeps the mirror chain-agnostic. */
+export function ensRpcUrl(chainId: ChainId): string {
+  return optionalEnv(ENV.ensRpcUrl) ?? rpcUrlFor(chainId)
 }
