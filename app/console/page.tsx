@@ -19,6 +19,7 @@ import { readDemoTarget } from "../lib/demo-target";
 import { readEnsMirror } from "../lib/ens";
 import { loadFirewallQueue } from "../lib/firewall";
 import { FLOOR_POLICY, loadFloor } from "../lib/floor";
+import { DRIFT_AGENT_ID, RUN_CANDIDATE_IDS } from "../lib/known-agents";
 import { readMirrorStatus } from "../lib/hcs";
 import { loadReceipts } from "../lib/receipts";
 import { boardSubjects, readBoard } from "../lib/registry";
@@ -108,7 +109,7 @@ export default async function ConsolePage({
               <Head
                 title="The hiring floor"
                 meta={`POLICY  minGrade ${FLOOR_POLICY.minGrade} / fail closed / fingerprint drift means refuse`}
-                lede="Candidate agents, gated on the attested grade and then on a fresh fingerprint recheck. These rows are the fixture set until the demo agents are registered; the run beside them calls the real gate."
+                lede="Candidate agents, gated on the attested grade and then on a fresh fingerprint recheck. The three rows are illustrative fixtures; the run beside them calls the real gate against the registered demo agents."
               />
               <div className="grid items-start gap-6">
                 <div className="min-w-0 space-y-4">
@@ -119,7 +120,7 @@ export default async function ConsolePage({
                     tested. A target that detects the test context and behaves
                     during it can still act differently afterwards, which is the
                     limit the run beside this demonstrates: the agent that turns
-                    hostile is one this gate graded A and hired.
+                    hostile is one that cleared the grade floor and was hired.
                   </p>
                 </div>
                 <div className="min-w-0">
@@ -130,9 +131,7 @@ export default async function ConsolePage({
                     <div className="px-4 py-4">
                       <LiveRun
                         fixtureEvents={events}
-                        defaultCandidates={floor
-                          .map((row) => row.agentId)
-                          .join(" ")}
+                        defaultCandidates={RUN_CANDIDATE_IDS.join(" ")}
                       />
                     </div>
                   </div>
@@ -172,14 +171,19 @@ export default async function ConsolePage({
             </>
           ) : null}
 
-          {view === "grade" ? (
+          {view === "grade" && agentCatalog ? (
             <div className="max-w-[860px]">
               <Head
                 title="Grade an agent"
                 lede="Search Sepolia demos or Base mainnet 8004scan leaders by id. Grade runs against the agent's IdentityRegistry card; ENS claim on Sepolia is optional."
               />
               <div className="grid gap-8 md:grid-cols-[minmax(0,1fr)_15rem] md:items-start">
-                <SubmitForm catalog={agentCatalog ?? []} />
+                <SubmitForm
+                  catalog={agentCatalog}
+                  allowMainnetClaim={
+                    process.env.PREFLIGHT_ALLOW_MAINNET_CLAIM === "1"
+                  }
+                />
                 <SubmitQr />
               </div>
               <p className="mt-6 max-w-[46rem] font-data text-[11.5px] leading-[1.8] text-meta">
@@ -199,7 +203,11 @@ export default async function ConsolePage({
               />
               <RugPull
                 catalog={agentCatalog ?? []}
-                defaultAgentId={boardSubjects(agents)[0] ?? ""}
+                defaultAgentId={
+                  agents !== undefined
+                    ? (boardSubjects(agents)[0] ?? "")
+                    : DRIFT_AGENT_ID
+                }
               />
             </>
           ) : null}

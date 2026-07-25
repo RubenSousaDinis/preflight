@@ -16,12 +16,19 @@
 import { getAddress } from 'viem'
 
 import type { Address, AgentId, ChainId, Grade, Hex } from '../../shared/types.ts'
+import { hederaTopicExplorerUrl, zerogShowcaseUrl } from './partner-links.ts'
 
 /**
  * Every key this project writes, in the order they are written.
  *
  * The spelling lives here and nowhere else. Two surfaces inventing two spellings of the same key is
  * drift within hours, and the reader of the second one sees a name with no grade on it.
+ *
+ * `url` is the standard ENS text key the ENS App surfaces under Records. It points at the Preflight
+ * page that shows the live grade and evidence; it is still a pointer, not a source.
+ *
+ * `preflight.zerog` and `preflight.hedera` are partner showcase links: set only when that stack was
+ * actually used (0G evidence URI, or an HCS receipt-mirror topic), cleared on re-sync otherwise.
  */
 export const ENS_KEYS = [
   'preflight.grade',
@@ -35,6 +42,9 @@ export const ENS_KEYS = [
   'preflight.receipts.head',
   'preflight.receipts.count',
   'preflight.hcsTopic',
+  'preflight.zerog',
+  'preflight.hedera',
+  'url',
   'description',
 ] as const
 
@@ -49,6 +59,17 @@ export type EnsKey = (typeof ENS_KEYS)[number]
  * cleared and `preflight.evidenceHash`, which is always written, is what a reader checks against.
  */
 export const EVIDENCE_URI_MAX_CHARS = 512
+
+/** Path on the Preflight app that shows grade and evidence for one agent. */
+export function agentGradePath(agentId: AgentId): string {
+  return `/a/${agentId}`
+}
+
+/** Absolute URL for that page. `origin` has no trailing slash. */
+export function agentGradeUrl(agentId: AgentId, origin: string): string {
+  const base = origin.replace(/\/+$/, '')
+  return `${base}${agentGradePath(agentId)}`
+}
 
 /** `eip155:{chainId}:{checksummedAddress}`, the pointer at what these records copy. */
 export function sourcePointer(chainId: ChainId, registry: Address): string {
@@ -71,6 +92,11 @@ export interface TextRecordInput {
   receiptsHead?: Hex | null
   receiptsCount?: number | null
   hcsTopic?: string | null
+  /**
+   * Public Preflight page for this agent (grade + evidence). Written to the standard ENS `url`
+   * record when present. Empty string clears a stale link on re-sync.
+   */
+  appUrl?: string | null
 }
 
 /**
@@ -79,13 +105,19 @@ export interface TextRecordInput {
  * It names the registry record as the thing to check, because someone who arrives at these records
  * through a name resolver has no other way of knowing that this is the copy and not the original.
  */
-export function describeMirror(pointer: string): string {
-  return `A mirror of the Preflight validation record at ${pointer}, which is the source. These text records are a copy of it and never the thing to trust; read the registry to check them.`
+export function describeMirror(pointer: string, appUrl?: string | null): string {
+  const base = `A mirror of the Preflight validation record at ${pointer}, which is the source. These text records are a copy of it and never the thing to trust; read the registry to check them.`
+  if (appUrl !== undefined && appUrl !== null && appUrl.length > 0) {
+    return `${base} Grade and evidence: ${appUrl}.`
+  }
+  return base
 }
 
 /** Every key, in order, with an empty string wherever a value is absent. */
 export function buildTextRecords(input: TextRecordInput): Record<EnsKey, string> {
   const pointer = sourcePointer(input.chainId, input.registry)
+  const appUrl = input.appUrl ?? ''
+  const hcsTopic = input.hcsTopic ?? ''
   const evidence =
     input.evidenceURI.length > 0 && input.evidenceURI.length <= EVIDENCE_URI_MAX_CHARS
       ? input.evidenceURI
@@ -105,7 +137,10 @@ export function buildTextRecords(input: TextRecordInput): Record<EnsKey, string>
       input.receiptsCount === undefined || input.receiptsCount === null
         ? ''
         : String(input.receiptsCount),
-    'preflight.hcsTopic': input.hcsTopic ?? '',
-    description: describeMirror(pointer),
+    'preflight.hcsTopic': hcsTopic,
+    'preflight.zerog': zerogShowcaseUrl(input.evidenceURI),
+    'preflight.hedera': hederaTopicExplorerUrl(hcsTopic),
+    url: appUrl,
+    description: describeMirror(pointer, appUrl),
   }
 }

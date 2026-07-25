@@ -29,7 +29,7 @@ export const ENS_SLIDES: ReactNode[] = [
       {[
         "Grade without ENS",
         "Claim gives owner the subname",
-        "Twelve text records as a mirror",
+        "Fifteen text records as a mirror",
       ].map((chip) => (
         <span
           key={chip}
@@ -49,11 +49,29 @@ export const ENS_SLIDES: ReactNode[] = [
     <div className="mb-9">
       <Terminal>
         <div>
-          <Dim>on claim + sync</Dim> twelve records when the name is writable
+          <Dim>on claim + sync</Dim> fifteen records when the name is writable
         </div>
         <div>
           {"  "}preflight.grade{"          "}A{"      "}
           <Dim>read off the record, never recomputed</Dim>
+        </div>
+        <div>
+          {"  "}preflight.zerog{"          "}
+          <span className="text-dark-accent-soft">0g.ai/…</span>
+          {"  "}
+          <Dim>only when evidence is on 0G</Dim>
+        </div>
+        <div>
+          {"  "}preflight.hedera{"         "}
+          <span className="text-dark-accent-soft">hashscan/…</span>
+          {"  "}
+          <Dim>only when HCS topic is set</Dim>
+        </div>
+        <div>
+          {"  "}url{"                     "}
+          <span className="text-dark-accent-soft">/a/{"{"}id{"}"}</span>
+          {"  "}
+          <Dim>Preflight grade + evidence page</Dim>
         </div>
         <div>
           {"  "}preflight.evidenceHash{"   "}0x…{"    "}

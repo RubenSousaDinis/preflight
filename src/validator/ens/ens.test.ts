@@ -155,6 +155,42 @@ test('every key is written every time, with an empty string where a value is abs
   assert.equal(records['preflight.receipts.head'], '')
   assert.equal(records['preflight.receipts.count'], '')
   assert.equal(records['preflight.hcsTopic'], '')
+  assert.equal(records['preflight.zerog'], '')
+  assert.equal(records['preflight.hedera'], '')
+  assert.equal(records.url, '')
+})
+
+test('url and description point at the Preflight grade page when an origin is given', () => {
+  const records = buildTextRecords(
+    recordInput({ appUrl: 'https://preflight-bay.vercel.app/a/8427' }),
+  )
+  assert.equal(records.url, 'https://preflight-bay.vercel.app/a/8427')
+  assert.match(
+    records.description,
+    /Grade and evidence: https:\/\/preflight-bay\.vercel\.app\/a\/8427/,
+  )
+})
+
+test('partner keys set only when 0G evidence or an HCS topic is present', () => {
+  const zerog = buildTextRecords(
+    recordInput({
+      evidenceURI:
+        'https://indexer-storage-testnet-turbo.0g.ai/file?root=0xabc',
+    }),
+  )
+  assert.equal(
+    zerog['preflight.zerog'],
+    'https://indexer-storage-testnet-turbo.0g.ai/file?root=0xabc',
+  )
+  assert.equal(zerog['preflight.hedera'], '')
+
+  const hedera = buildTextRecords(recordInput({ hcsTopic: '0.0.12345' }))
+  assert.equal(hedera['preflight.zerog'], '')
+  assert.equal(
+    hedera['preflight.hedera'],
+    'https://hashscan.io/testnet/topic/0.0.12345',
+  )
+  assert.equal(hedera['preflight.hcsTopic'], '0.0.12345')
 })
 
 test('the description says which of the two is the source', () => {
@@ -259,6 +295,30 @@ test('claim is a no-op when the agent owner already holds the name', async () =>
   assert.equal(result.txHash, null)
   assert.equal(result.owner, AGENT_OWNER)
   assert.equal(result.agentOwner, AGENT_OWNER)
+  assert.equal(result.recordsSeeded, false)
+})
+
+test('parent repoint is refused by default when the agent owner already holds the name', async () => {
+  const { client } = fakeChain({ owner: AGENT_OWNER, resolver: RESOLVER })
+  const plan = await planSubname('8427', {
+    target: TARGET,
+    client,
+    owner: VALIDATOR,
+  })
+  assert.match(plan.refusal ?? '', /already owned by/)
+})
+
+test('parent repoint is allowed when claim seeds an already-owned empty name', async () => {
+  const { client } = fakeChain({ owner: AGENT_OWNER, resolver: RESOLVER })
+  const plan = await planSubname('8427', {
+    target: TARGET,
+    client,
+    owner: VALIDATOR,
+    allowParentRepoint: true,
+  })
+  assert.equal(plan.refusal, null)
+  assert.equal(plan.action, 'repoint')
+  assert.equal(plan.intendedOwner, VALIDATOR)
 })
 
 test('an unclaimed name is not writable by the validator mirror path', async () => {

@@ -18,7 +18,6 @@ import {
   identityRegistryFor,
   requireEnv,
   rpcUrlFor,
-  validationRegistry,
 } from '../shared/config.ts'
 import type { AgentCard } from '../shared/types.ts'
 import {
@@ -55,10 +54,9 @@ import {
   verifyMirror,
   writeRecords,
 } from './ens/client.ts'
-import { ENS_KEYS, buildTextRecords, type EnsKey } from './ens/records.ts'
+import { ENS_KEYS, type EnsKey } from './ens/records.ts'
+import { recordsFromValidationRegistry } from './ens/records-from-registry.ts'
 import { mirrorAfterPublish } from './ens/mirror.ts'
-import { configuredTopicId } from '../receipts/hcs-mirror.ts'
-import { gradeForScore } from '../shared/grade.ts'
 import { ensureSepoliaMirror, mainnetMarker } from './sepolia-mirror.ts'
 import { AgentWatcher, describeFlip } from './watcher.ts'
 import { liveFingerprint } from '../gates/vet/live-fingerprint.ts'
@@ -232,34 +230,12 @@ async function publish(agentId: string, chainId: number): Promise<boolean> {
 async function ensRecordsFromRegistry(
   agentId: string,
 ): Promise<{ records: Record<EnsKey, string>; lastUpdate: number; score: number } | null> {
-  const record = await readValidationWithEvidence(agentId, undefined, { includeExpired: true })
-  if (record === null) return null
-  const grade = gradeForScore(record.score)
-  if (grade === null) {
-    console.log(`refused: agent ${agentId} carries a score of ${record.score}, which this methodology does not write`)
-    return null
-  }
-  const registry = validationRegistry()
   const head = flagValue('receipts-head')
   const count = flagValue('receipts-count')
-  return {
-    lastUpdate: record.lastUpdate,
-    score: record.score,
-    records: buildTextRecords({
-      agentId,
-      grade,
-      score: record.score,
-      evidenceURI: record.responseURI,
-      evidenceHash: record.responseHash,
-      registry: registry.address,
-      chainId: registry.chainId,
-      updatedAt: record.lastUpdate,
-      methodology: record.tag,
-      receiptsHead: head === undefined ? null : (head as `0x${string}`),
-      receiptsCount: count === undefined ? null : Number(count),
-      hcsTopic: configuredTopicId(),
-    }),
-  }
+  return await recordsFromValidationRegistry(agentId, {
+    receiptsHead: head === undefined ? null : (head as `0x${string}`),
+    receiptsCount: count === undefined ? null : Number(count),
+  })
 }
 
 async function ensStatus(ids: string[]): Promise<boolean> {
@@ -356,14 +332,25 @@ async function ensClaim(agentId: string): Promise<boolean> {
   console.log(`name          ${plan.name}`)
   console.log(`registry      ${plan.registry} on chain ${plan.chainId}`)
   console.log(`current owner ${plan.currentOwner}`)
+  const built = await ensRecordsFromRegistry(agentId)
+  if (built === null) {
+    console.log(
+      'records       none (no ValidationRegistry row — claim will create an empty name; publish then claim again to seed)',
+    )
+  } else {
+    console.log(`records       will seed ${ENS_KEYS.length} keys from registry (score ${built.score})`)
+  }
   if (!process.argv.includes('--send')) {
     console.log('\nnothing was sent. re-run with --send to claim the name for the identity owner.')
     return true
   }
-  const result = await claimSubname(agentId)
+  const result = await claimSubname(agentId, {
+    ...(built !== null ? { records: built.records } : {}),
+  })
   console.log(`\nclaimed       ${result.plan.name}`)
   console.log(`owner         ${result.agentOwner}`)
   console.log(`tx            ${result.txHash ?? '(already owned)'}`)
+  console.log(`records       ${result.recordsSeeded ? 'seeded from ValidationRegistry' : 'not seeded'}`)
   console.log(`read back     owner ${result.owner}, resolver ${result.resolver}`)
   return true
 }

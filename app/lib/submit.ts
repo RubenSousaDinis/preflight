@@ -6,6 +6,7 @@ import {
   agentIdForEnsName,
   claimSubname,
 } from "@/src/validator/ens/client";
+import { recordsFromValidationRegistry } from "@/src/validator/ens/records-from-registry";
 import { ensConfig } from "@/src/shared/config";
 import type { ChainId, Grade } from "@/src/shared";
 import { identityChainId } from "@/src/validator/identity-registry";
@@ -45,6 +46,8 @@ export type ClaimResult =
       name: string;
       owner: string;
       txHash: string | null;
+      /** True when ValidationRegistry values were written before ownership moved. */
+      recordsSeeded: boolean;
       trustNote: string;
     };
 
@@ -157,14 +160,27 @@ export async function claimAgent(
 
   const chain = parseChainId(chainRaw) ?? defaultChainForId(raw);
 
+  if (
+    chain === MAINNET_CHAIN_ID &&
+    process.env.PREFLIGHT_ALLOW_MAINNET_CLAIM !== "1"
+  ) {
+    return {
+      kind: "invalid",
+      message:
+        "Mainnet claims are not enabled on this deployment. The claim path registers a Sepolia mirror with the validator key, so it runs operator-side only; grading works for every row.",
+    };
+  }
+
   try {
     if (chain === MAINNET_CHAIN_ID) {
       const { ensureSepoliaMirror } = await import(
         "@/src/validator/sepolia-mirror"
       );
       const mirror = await ensureSepoliaMirror(raw);
+      const built = await recordsFromValidationRegistry(mirror.sepoliaId);
       const result = await claimSubname(mirror.sepoliaId, {
         agentOwner: mirror.mainnetOwner,
+        ...(built !== null ? { records: built.records } : {}),
       });
       return {
         kind: "claimed",
@@ -174,12 +190,17 @@ export async function claimAgent(
         name: result.plan.name,
         owner: result.agentOwner,
         txHash: result.txHash,
-        trustNote:
-          "Grade evidence is from the mainnet card. The Sepolia identity is validator-owned; this ENS name is owned by the mainnet agent owner.",
+        recordsSeeded: result.recordsSeeded,
+        trustNote: result.recordsSeeded
+          ? "Grade evidence is from the mainnet card. Text records were seeded from the Sepolia ValidationRegistry before ownership moved to the mainnet agent owner."
+          : "Grade evidence is from the mainnet card. The Sepolia identity is validator-owned; this ENS name is owned by the mainnet agent owner. No ValidationRegistry record was available to seed text records — publish a grade on the Sepolia mirror, then claim again.",
       };
     }
 
-    const result = await claimSubname(raw);
+    const built = await recordsFromValidationRegistry(raw);
+    const result = await claimSubname(raw, {
+      ...(built !== null ? { records: built.records } : {}),
+    });
     return {
       kind: "claimed",
       agentId: raw,
@@ -188,8 +209,10 @@ export async function claimAgent(
       name: result.plan.name,
       owner: result.agentOwner,
       txHash: result.txHash,
-      trustNote:
-        "ENS subname owned by the Sepolia IdentityRegistry ownerOf for this agent.",
+      recordsSeeded: result.recordsSeeded,
+      trustNote: result.recordsSeeded
+        ? "ENS subname owned by the Sepolia IdentityRegistry ownerOf for this agent. Text records were seeded from the ValidationRegistry before ownership moved."
+        : "ENS subname owned by the Sepolia IdentityRegistry ownerOf for this agent. No ValidationRegistry record was available to seed text records — publish a grade, then claim again.",
     };
   } catch (thrown) {
     return { kind: "error", agentId: raw, error: toRenderableError(thrown) };
