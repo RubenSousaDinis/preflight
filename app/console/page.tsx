@@ -88,7 +88,7 @@ export default async function ConsolePage({
               <Head
                 title="The hiring floor"
                 meta={`POLICY  minGrade ${FLOOR_POLICY.minGrade} / fail closed / fingerprint drift means refuse`}
-                lede="Agents offering paid work. Each row is gated live: the attested grade, then a fresh fingerprint recheck against the tool surface that was graded."
+                lede="Candidate agents, gated on the attested grade and then on a fresh fingerprint recheck. These rows are the fixture set until the demo agents are registered; the run beside them calls the real gate."
               />
               <div className="grid items-start gap-6">
                 <div className="min-w-0 space-y-4">
@@ -126,7 +126,7 @@ export default async function ConsolePage({
               <Head
                 title="Transaction firewall"
                 meta={`${queue.length} CHECKED / FOUR CHECKS, NO FIFTH`}
-                lede="txGuard() forks the chain at the live block and simulates the exact pending call before the wallet signs, then runs the four checks over what it did."
+                lede="txGuard() forks the chain at the live block and simulates the exact pending call before the wallet signs. The four calls below are staged fixtures and replay a recorded verdict; the unseen slot underneath them calls the real gate against Base mainnet."
               />
               <PendingQueue items={queue} />
               <div className="mt-6">

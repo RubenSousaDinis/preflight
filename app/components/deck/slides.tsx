@@ -248,7 +248,7 @@ export const SLIDES: ReactNode[] = [
         ["agent card / pending tx", true],
         ["run or simulate in a sandbox", false],
         ["grade A to F", false],
-        ["validation record on Base", true],
+        ["validation record on Base Sepolia", true],
       ].map(([label, strong], position) => (
         <span key={String(label)} className="flex items-center gap-5">
           <span

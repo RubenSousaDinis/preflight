@@ -30,7 +30,7 @@ const PIPELINE = [
   { label: "AgentCard / pending tx", strong: true },
   { label: "run or simulate in a sandbox", strong: false },
   { label: "grade A to F", strong: false },
-  { label: "validationResponse on Base", strong: true },
+  { label: "validation record on Base Sepolia", strong: true },
 ];
 
 const METHOD = [
@@ -44,7 +44,7 @@ const METHOD = [
   },
   {
     title: "Attested",
-    body: "Verdicts post to the ERC-8004 Validation Registry on Base, signed by the validator. The gates read the chain directly, so no offchain service sits in the trust path.",
+    body: "Verdicts post to the ERC-8004 Validation Registry on Base Sepolia, signed by the validator. The gates read the chain directly, so no offchain service sits in the trust path.",
   },
 ];
 
@@ -125,10 +125,10 @@ export default async function ProductPage() {
               trust.
             </h1>
             <p className="mt-5 max-w-[520px] text-[18px] leading-[1.65] text-muted">
-              A tool it hires, a skill it loads, a transaction it signs: each one
-              can drain the wallet. preflight runs or simulates the thing in a
-              sandbox, watches what it actually does, grades it A to F, and gates
-              the action on the result.
+              A tool it hires or a transaction it signs: either one can drain the
+              wallet. preflight runs the agent or simulates the call, watches what
+              it actually does, grades it A to F, and gates the action on the
+              result.
             </p>
             <div className="mt-7 flex flex-wrap items-center gap-3.5">
               <Link
@@ -138,7 +138,7 @@ export default async function ProductPage() {
                 Open the console
               </Link>
               <span className="rounded-control border border-rule bg-subtle px-3.5 py-2.5 font-data text-[13px] text-muted">
-                npm i @polygraphso/litmus
+                preflight_agent / preflight_tx over MCP
               </span>
             </div>
             <p className="mt-6 font-data text-[13.5px]">
@@ -232,8 +232,8 @@ export default async function ProductPage() {
             />
           </div>
           <p className="mt-4.5 font-data text-[12.5px] text-meta">
-            Ships as an SDK and as an MCP server, so any MCP-capable agent can
-            call the gate with zero integration: preflight_agent / preflight_tx
+            Runs as an MCP server, so any MCP-capable agent can call either gate
+            without an integration: preflight_agent / preflight_tx
           </p>
         </Container>
       </Band>
@@ -366,7 +366,7 @@ export default async function ProductPage() {
             {[
               ["npm", "the engine, consumed as a library", false],
               ["Apache-2.0", "open source, anyone can re-run it", false],
-              ["Base", "attestations anyone can read onchain", true],
+              ["Base Sepolia", "records anyone can read onchain", true],
               ["A to F", "one grade format across tools, skills, contracts", true],
             ].map(([value, note, accent], index) => (
               <div

@@ -57,7 +57,7 @@ export async function SiteFooter() {
           </div>
           <p className="mb-3.5 max-w-[300px] text-[13.5px] text-muted">
             The pre-flight check for autonomous agents. Run or simulate, grade A
-            to F, attest on Base, gate the action.
+            to F, post the record on Base Sepolia, gate the action.
           </p>
           <p className="font-data text-[12px] text-meta">
             Nobody can pay for a grade.
