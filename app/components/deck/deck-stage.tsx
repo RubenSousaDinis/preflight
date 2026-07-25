@@ -15,6 +15,10 @@ import type { ReactNode } from "react";
   A fixed canvas is the point. Every size on a slide is chosen against 1920 and
   scales together, so a projector at any resolution gets the same composition
   rather than a reflow nobody rehearsed.
+
+  Inactive slides stay mounted with visibility:hidden (not display:none). Print
+  needs every slide in the box tree so page breaks can fire; display:none until
+  @media print is a known way to get a one-page PDF of only the topmost slide.
 */
 
 const CANVAS_WIDTH = 1920;
@@ -23,6 +27,7 @@ const CANVAS_HEIGHT = 1080;
 export function DeckStage({ slides }: { slides: ReactNode[] }) {
   const [index, setIndex] = useState(0);
   const [scale, setScale] = useState(1);
+  const [printing, setPrinting] = useState(false);
   const viewport = useRef<HTMLDivElement>(null);
   const last = slides.length - 1;
 
@@ -46,6 +51,7 @@ export function DeckStage({ slides }: { slides: ReactNode[] }) {
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
+      if (printing) return;
       const key = event.key;
       if (key === "ArrowRight" || key === "PageDown" || key === " ") {
         event.preventDefault();
@@ -63,29 +69,94 @@ export function DeckStage({ slides }: { slides: ReactNode[] }) {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [go, index, last]);
+  }, [go, index, last, printing]);
+
+  useEffect(() => {
+    const before = () => setPrinting(true);
+    const after = () => setPrinting(false);
+    window.addEventListener("beforeprint", before);
+    window.addEventListener("afterprint", after);
+    return () => {
+      window.removeEventListener("beforeprint", before);
+      window.removeEventListener("afterprint", after);
+    };
+  }, []);
+
+  const downloadPdf = useCallback(() => {
+    // Commit the print layout before the browser snapshots. Relying on
+    // @media print alone against absolutely stacked slides still collapses
+    // to one page (the last slide) in Chromium.
+    setPrinting(true);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        window.print();
+      });
+    });
+  }, []);
 
   return (
-    <div className="fixed inset-0 bg-ink">
-      <div ref={viewport} className="deck-viewport h-full w-full overflow-hidden">
+    <div
+      className={`deck-root bg-ink ${printing ? "" : "fixed inset-0"}`}
+      data-printing={printing ? "" : undefined}
+      style={
+        printing
+          ? { position: "static", inset: "auto", height: "auto", width: "auto", overflow: "visible" }
+          : undefined
+      }
+    >
+      <div
+        ref={viewport}
+        className={`deck-viewport w-full ${printing ? "h-auto overflow-visible" : "h-full overflow-hidden"}`}
+      >
         <div
-          className="deck-canvas absolute top-1/2 left-1/2"
-          style={{
-            width: CANVAS_WIDTH,
-            height: CANVAS_HEIGHT,
-            transform: `translate(-50%, -50%) scale(${scale})`,
-          }}
+          className={`deck-canvas ${printing ? "" : "absolute top-1/2 left-1/2"}`}
+          style={
+            printing
+              ? {
+                  width: CANVAS_WIDTH,
+                  height: "auto",
+                  transform: "none",
+                  position: "static",
+                }
+              : {
+                  width: CANVAS_WIDTH,
+                  height: CANVAS_HEIGHT,
+                  transform: `translate(-50%, -50%) scale(${scale})`,
+                }
+          }
         >
-          {slides.map((slide, position) => (
-            <div
-              key={position}
-              className="deck-slide absolute inset-0"
-              style={{ display: position === index ? "flex" : "none" }}
-              aria-hidden={position === index ? undefined : true}
-            >
-              {slide}
-            </div>
-          ))}
+          {slides.map((slide, position) => {
+            const active = position === index;
+            return (
+              <div
+                key={position}
+                className={`deck-slide ${printing ? "" : "absolute inset-0"}`}
+                style={
+                  printing
+                    ? {
+                        position: "relative",
+                        inset: "auto",
+                        width: CANVAS_WIDTH,
+                        height: CANVAS_HEIGHT,
+                        display: "block",
+                        visibility: "visible",
+                        opacity: 1,
+                        breakAfter: position === last ? "auto" : "page",
+                        pageBreakAfter: position === last ? "auto" : "always",
+                      }
+                    : {
+                        visibility: active ? "visible" : "hidden",
+                        opacity: active ? 1 : 0,
+                        pointerEvents: active ? "auto" : "none",
+                        display: "flex",
+                      }
+                }
+                aria-hidden={active ? undefined : true}
+              >
+                {slide}
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -94,7 +165,7 @@ export function DeckStage({ slides }: { slides: ReactNode[] }) {
           <button
             type="button"
             onClick={() => go(index - 1)}
-            disabled={index === 0}
+            disabled={index === 0 || printing}
             className="px-1 disabled:opacity-40"
             aria-label="Previous slide"
           >
@@ -106,7 +177,7 @@ export function DeckStage({ slides }: { slides: ReactNode[] }) {
           <button
             type="button"
             onClick={() => go(index + 1)}
-            disabled={index === last}
+            disabled={index === last || printing}
             className="px-1 disabled:opacity-40"
             aria-label="Next slide"
           >
@@ -115,7 +186,7 @@ export function DeckStage({ slides }: { slides: ReactNode[] }) {
         </div>
         <button
           type="button"
-          onClick={() => window.print()}
+          onClick={downloadPdf}
           className="rounded-control bg-accent px-4 py-2.5 text-[14px] font-medium text-paper"
         >
           Download PDF
