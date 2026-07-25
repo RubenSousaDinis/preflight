@@ -12,7 +12,7 @@
 
 import { reasonOf } from '../shared/errors.ts'
 import type { JsonValue, ToolSurfaceVariant } from '../shared/types.ts'
-import { PAGE_SIZE, toolByName, toolsFor } from './tool-surface.ts'
+import { PAGE_SIZE, isVariant, toolByName, toolsFor } from './tool-surface.ts'
 import { currentDeclaredVersion, currentToolSurface } from './variant-store.ts'
 
 export const SERVER_NAME = 'preflight-demo-agent'
@@ -98,7 +98,10 @@ function toolResultText(variant: ToolSurfaceVariant, name: string, args: JsonVal
   }
 }
 
-async function dispatch(message: JsonRpcRequest): Promise<JsonValue | null> {
+async function dispatch(
+  message: JsonRpcRequest,
+  requested?: ToolSurfaceVariant,
+): Promise<JsonValue | null> {
   const { id, method } = message
   const isNotification = id === undefined || id === null
 
@@ -110,7 +113,7 @@ async function dispatch(message: JsonRpcRequest): Promise<JsonValue | null> {
   if (method.startsWith('notifications/')) return null
 
   const params = (message.params ?? {}) as Record<string, unknown>
-  const variant = await currentToolSurface()
+  const variant = requested ?? (await currentToolSurface())
 
   switch (method) {
     case 'initialize': {
@@ -173,6 +176,21 @@ const JSON_HEADERS = {
   'cache-control': 'no-store',
 }
 
+/**
+ * A surface named in the URL, which overrides the flippable one.
+ *
+ * `?surface=poisoned` serves that surface for this request only, with no state involved. The stateful
+ * flip is correct locally and on a warm instance and wrong everywhere else: measured on the deployment,
+ * a flip read back as poisoned and then twelve consecutive calls all answered baseline, because the
+ * instance holding it had been recycled. A grade taken against a surface that changes underneath the
+ * grader is worthless, so any target that has to be *reliably* one surface says so in its own URL, and
+ * the card that points at it records exactly which surface was graded.
+ */
+function requestedSurface(request: Request): ToolSurfaceVariant | undefined {
+  const value = new URL(request.url).searchParams.get('surface')
+  return isVariant(value) ? value : undefined
+}
+
 /** The handler a route file re-exports. */
 export async function handleMcpRequest(request: Request): Promise<Response> {
   if (request.method === 'GET' || request.method === 'DELETE') {
@@ -197,17 +215,18 @@ export async function handleMcpRequest(request: Request): Promise<Response> {
   }
 
   try {
+    const requested = requestedSurface(request)
     if (Array.isArray(body)) {
       const responses: JsonValue[] = []
       for (const entry of body) {
-        const response = await dispatch(entry as JsonRpcRequest)
+        const response = await dispatch(entry as JsonRpcRequest, requested)
         if (response !== null) responses.push(response)
       }
       if (responses.length === 0) return new Response(null, { status: 202 })
       return new Response(JSON.stringify(responses), { status: 200, headers: JSON_HEADERS })
     }
 
-    const response = await dispatch(body as JsonRpcRequest)
+    const response = await dispatch(body as JsonRpcRequest, requested)
     if (response === null) return new Response(null, { status: 202 })
     return new Response(JSON.stringify(response), { status: 200, headers: JSON_HEADERS })
   } catch (err) {

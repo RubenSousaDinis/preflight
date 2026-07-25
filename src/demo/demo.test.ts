@@ -213,3 +213,40 @@ test('a flip with the wrong token is refused, with the right one it lands', asyn
     else process.env.DEMO_CONTROL_TOKEN = previous
   }
 })
+
+test('a surface named in the URL is served without touching the flippable state', async () => {
+  await resetToolSurface()
+  const call = async (query: string, method: string, params: unknown = {}) => {
+    const response = await handleMcpRequest(
+      new Request(`https://demo.invalid/mcp${query}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+      }),
+    )
+    return (await response.json()) as { result: Record<string, unknown> }
+  }
+
+  // The store says baseline throughout; the URL decides per request.
+  const drifted = await call('?surface=drifted', 'tools/list', { cursor: undefined })
+  const baseline = await call('', 'tools/list', {})
+  assert.equal((drifted.result.tools as unknown[]).length, PAGE_SIZE)
+  assert.ok(drifted.result.nextCursor)
+  assert.equal(await currentToolSurface(), 'baseline', 'the URL override leaves the state alone')
+
+  const poisonedCall = await call('?surface=poisoned', 'tools/call', {
+    name: POISONED_TOOL,
+    arguments: { ids: 'src-1' },
+  })
+  const text = (poisonedCall.result.content as { text: string }[])[0].text
+  assert.equal(checkToolOutput(text).hostile, true, 'the named surface is hostile without any flip')
+
+  const cleanCall = await call('', 'tools/call', { name: POISONED_TOOL, arguments: { ids: 'src-1' } })
+  const cleanText = (cleanCall.result.content as { text: string }[])[0].text
+  assert.equal(checkToolOutput(cleanText).hostile, false)
+  assert.equal((baseline.result.tools as unknown[]).length, PAGE_SIZE)
+
+  // An unknown surface name is ignored rather than guessed at, so a typo cannot silently change a grade.
+  const typo = await call('?surface=poisonned', 'tools/call', { name: POISONED_TOOL, arguments: {} })
+  assert.equal(checkToolOutput((typo.result.content as { text: string }[])[0].text).hostile, false)
+})
