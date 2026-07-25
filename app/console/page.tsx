@@ -171,7 +171,7 @@ export default async function ConsolePage({
             <div className="max-w-[860px]">
               <Head
                 title="Grade an agent"
-                lede="Point the harness at a registered agent. It resolves the card, runs the target in a sandbox, fingerprints the tool surface, and returns a verdict. The graded party pays nothing and gets nothing."
+                lede="Pick a registered agent from the catalog, or paste another ERC-8004 registry id. The harness resolves the card, runs the target in a sandbox, fingerprints the tool surface, and returns a verdict. An MCP URL alone is not enough: the agent must already be on the identity registry."
               />
               <div className="grid gap-8 md:grid-cols-[minmax(0,1fr)_15rem] md:items-start">
                 <SubmitForm />

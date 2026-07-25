@@ -1,36 +1,84 @@
 "use client";
 
-import { useActionState } from "react";
+import { startTransition, useActionState, useRef } from "react";
+import { KNOWN_AGENTS } from "../../lib/known-agents";
 import { submitAgent, type SubmitResult } from "../../lib/submit";
 import { gradeColor } from "../../lib/tokens";
 import { ErrorState, PulseDots } from "../states";
 
 /*
-  Beat 3's form: one field, one action, and the three states the wait actually has.
+  Beat 3's form: known registered agents first, then a free-text registry id.
 
   The grading wait is the demo rather than something to hide, so the grading state
   says what is happening instead of spinning. Nothing here quotes a price: metering
   is post-event, and an illustrative price rendered next to a live form reads as a
   live price.
+
+  Only an ERC-8004 id grades. The catalog is those ids with stage names; the field
+  still accepts another registered id. An MCP URL is refused upstream on purpose.
 */
 export function SubmitForm() {
   const [result, formAction, isPending] = useActionState<
     SubmitResult | null,
     FormData
   >(submitAgent, null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function gradeKnown(id: string) {
+    if (inputRef.current) inputRef.current.value = id;
+    const data = new FormData();
+    data.set("ref", id);
+    startTransition(() => {
+      formAction(data);
+    });
+  }
 
   return (
     <div id="submit">
+      <div className="mb-5">
+        <p className="font-data text-[0.64rem] uppercase tracking-[0.16em] text-ink/50">
+          known agents
+        </p>
+        <ul className="mt-2 divide-y divide-rule border border-rule">
+          {KNOWN_AGENTS.map((agent) => (
+            <li key={agent.id}>
+              <button
+                type="button"
+                disabled={isPending}
+                onClick={() => gradeKnown(agent.id)}
+                className="flex w-full items-baseline gap-3 px-3 py-2.5 text-left transition-colors hover:bg-band/60 disabled:opacity-50"
+              >
+                <span className="shrink-0 font-data text-[0.85rem] text-ink">
+                  {agent.id}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[0.95rem] leading-snug text-ink">
+                    {agent.name}
+                  </span>
+                  <span className="mt-0.5 block font-data text-[0.68rem] text-ink/45">
+                    {agent.note}
+                  </span>
+                </span>
+                <span className="shrink-0 font-data text-[0.72rem] tracking-[0.08em] text-accent">
+                  grade
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+
       <form action={formAction} className="flex flex-wrap items-end gap-3">
         <label className="min-w-0 flex-1">
           <span className="block font-data text-[0.64rem] uppercase tracking-[0.16em] text-ink/50">
-            agent id or reference
+            or another registry id
           </span>
           <input
+            ref={inputRef}
             name="ref"
             autoComplete="off"
             spellCheck={false}
-            placeholder="npm/@scope/server, an https MCP URL, or a registry id"
+            placeholder="8427"
             className="mt-1 w-full border border-rule bg-paper px-3 py-2 font-data text-[0.85rem] text-ink outline-none focus:border-accent"
           />
         </label>
