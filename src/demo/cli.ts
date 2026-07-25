@@ -205,6 +205,41 @@ async function settle(): Promise<boolean> {
   return !settled.stubbed
 }
 
+/**
+ * Beat 1 against real published records, which is what the stage runs.
+ *
+ * No stubbing: each candidate is an ERC-8004 agent id, the gate reads its record from the registry,
+ * fetches the evidence, and re-enumerates the live surface. The hostile turn comes from the hired
+ * agent's card being re-pointed at the poisoned surface beforehand, which the gate still hires because
+ * poisoned and baseline carry byte-identical tool lists and therefore the same fingerprint. What changes
+ * is only what comes back from the call, which is precisely a tool-output injection.
+ */
+async function beat1Live(agentIds: string[]): Promise<boolean> {
+  const receipts = new ReceiptChain()
+  const events: HarnessEvent[] = []
+  const rail = railByName(flagValue('rail') ?? 'stub')
+  console.log(`candidates ${agentIds.join(', ')} | rail ${rail.name}\n`)
+
+  for await (const event of runTask(
+    { budget: 1_000_000_000n, task: 'src-1,src-2,src-3', candidates: agentIds },
+    {
+      receipts,
+      rail,
+      payTo: flagValue('pay-to') ?? process.env.A_AGENT_HEDERA_ACCOUNT_ID,
+      toolName: 'summarize_sources',
+    },
+  )) {
+    render(event)
+    events.push(event)
+  }
+
+  const verified = await receipts.verify()
+  console.log(`\nreceipt chain: ${verified.ok ? 'verified' : `broken at ${verified.brokenAt}`}`)
+  console.log(`signer:        ${receipts.signerPubKey}`)
+  const kinds = events.map((event) => event.type)
+  return verified.ok && kinds.filter((k) => k === 'paid').length <= 1
+}
+
 async function main(): Promise<void> {
   const [command, ...rest] = process.argv.slice(2)
   if (command === 'rail-status') {
@@ -215,6 +250,10 @@ async function main(): Promise<void> {
     process.exitCode = (await settle()) ? 0 : 1
     return
   }
+  if (command === 'beat1-live') {
+    process.exitCode = (await beat1Live((flagValue('agents') ?? rest[0] ?? '').split(',').filter(Boolean))) ? 0 : 1
+    return
+  }
   if (command === 'beat1') {
     process.exitCode = (await beat1(rest[0])) ? 0 : 1
     return
@@ -222,6 +261,7 @@ async function main(): Promise<void> {
   console.log(
     [
       'usage:',
+      '  cli.ts beat1-live --agents 8430,8436 [--rail hedera-transfer]',
       '  cli.ts beat1 <mcp url> [--pin data] [--poisoned] [--rail stub|hedera-transfer|hedera-x402] [--pay-to <account>]',
       '  cli.ts rail-status [--to <account id>] [--amount <tinybars>]',
       '  cli.ts settle --to <account id> [--amount <tinybars>]',
