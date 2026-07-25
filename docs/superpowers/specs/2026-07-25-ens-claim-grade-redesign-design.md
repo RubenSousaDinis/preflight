@@ -1,7 +1,7 @@
 # ENS claim + grade-without-ENS redesign
 
 > Date: 2026-07-25  
-> Status: approved for planning; not yet implemented  
+> Status: approved; implemented on `feature/ens-claim-grade-ship`  
 > Repo: `preflight`  
 > Supersedes the booth UX where grading required an ENS name under `preflight.basetest.eth`
 

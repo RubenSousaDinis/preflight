@@ -18,6 +18,8 @@ import {
   ZERO_ADDRESS,
   agentIdForEnsName,
   assembleTextCalls,
+  canValidatorWriteMirror,
+  claimSubname,
   ensureSubname,
   planSubname,
   readAgentRecords,
@@ -28,9 +30,14 @@ import { EnsTextMirror, mirrorAfterPublish, type EnsMirrorJob } from './mirror.t
 
 const VALIDATOR = '0x1111111111111111111111111111111111111111' as Address
 const STRANGER = '0x2222222222222222222222222222222222222222' as Address
+const AGENT_OWNER = '0x5555555555555555555555555555555555555555' as Address
 const RESOLVER = '0x3333333333333333333333333333333333333333' as Address
 const REGISTRY = '0x4444444444444444444444444444444444444444' as Address
 const EVIDENCE_HASH = `0x${'ab'.repeat(32)}` as Hex
+
+// planSubname compares the parent owner to the configured validator (the signer), not to the
+// intended subname owner. Offline fixtures use this fixed address.
+process.env[ENV.validatorAddress] = VALIDATOR
 
 const TARGET: EnsTarget = {
   chainId: 84532,
@@ -232,6 +239,44 @@ test('a subname held by somebody else is refused, never overwritten', async () =
     (err: unknown) => isPreflightError(err) && err.code === 'ENS',
     'the refusal is typed, and it happens before a key is loaded',
   )
+})
+
+test('claiming for the agent owner is planned as a repoint when the validator holds the name', async () => {
+  const { client } = fakeChain({ owner: VALIDATOR, resolver: RESOLVER })
+  const plan = await planSubname('8427', { target: TARGET, client, owner: AGENT_OWNER })
+  assert.equal(plan.refusal, null)
+  assert.equal(plan.action, 'repoint')
+  assert.equal(plan.intendedOwner, AGENT_OWNER)
+})
+
+test('claim is a no-op when the agent owner already holds the name', async () => {
+  const { client } = fakeChain({ owner: AGENT_OWNER, resolver: RESOLVER })
+  const result = await claimSubname('8427', {
+    target: TARGET,
+    client,
+    agentOwner: AGENT_OWNER,
+  })
+  assert.equal(result.txHash, null)
+  assert.equal(result.owner, AGENT_OWNER)
+  assert.equal(result.agentOwner, AGENT_OWNER)
+})
+
+test('an unclaimed name is not writable by the validator mirror path', async () => {
+  const { client } = fakeChain({})
+  const access = await canValidatorWriteMirror('8427', { target: TARGET, client })
+  assert.equal(access.writable, false)
+  assert.match(access.reason ?? '', /not claimed yet/)
+})
+
+test('a validator-held name is writable; an owner-held name is not', async () => {
+  const held = fakeChain({ owner: VALIDATOR, resolver: RESOLVER })
+  const writable = await canValidatorWriteMirror('8427', { target: TARGET, client: held.client })
+  assert.equal(writable.writable, true)
+
+  const claimed = fakeChain({ owner: AGENT_OWNER, resolver: RESOLVER })
+  const blocked = await canValidatorWriteMirror('8427', { target: TARGET, client: claimed.client })
+  assert.equal(blocked.writable, false)
+  assert.match(blocked.reason ?? '', /owned by 0x5555/)
 })
 
 test('a mainnet ENS target is refused before a write key is loaded', async () => {

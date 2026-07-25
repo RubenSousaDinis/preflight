@@ -10,11 +10,11 @@
  * re-derived by anyone checking the grade, which is the property the whole project rests on.
  */
 
-import { createPublicClient, http, parseAbi, type PublicClient } from 'viem'
+import { createPublicClient, getAddress, http, parseAbi, type PublicClient } from 'viem'
 
 import { AgentResolveError, ConfigError } from '../shared/errors.ts'
 import { identityRegistryFor, rpcUrlFor } from '../shared/config.ts'
-import type { AgentId, ChainId } from '../shared/types.ts'
+import type { Address, AgentId, ChainId } from '../shared/types.ts'
 
 export const IDENTITY_REGISTRY_ABI = parseAbi([
   'function tokenURI(uint256 tokenId) view returns (string)',
@@ -114,6 +114,42 @@ export interface AgentURIRead {
   chainId: ChainId
   registry: string
   block: bigint
+}
+
+/**
+ * Reads `ownerOf(agentId)` from the IdentityRegistry.
+ *
+ * Used by ENS claim so the subname owner is the agent owner, not the Preflight validator. A revert
+ * means the id is not registered.
+ */
+export async function readAgentOwner(
+  agentId: AgentId,
+  options: RegistryReadOptions = {},
+): Promise<Address> {
+  const chainId = options.chainId ?? identityChainId()
+  const registry = identityRegistryFor(chainId)
+  const client = options.client ?? publicClientFor(chainId)
+  const tokenId = toTokenId(agentId)
+
+  try {
+    const owner = await client.readContract({
+      address: registry,
+      abi: IDENTITY_REGISTRY_ABI,
+      functionName: 'ownerOf',
+      args: [tokenId],
+      ...(options.atBlock !== undefined ? { blockNumber: options.atBlock } : {}),
+    })
+    return getAddress(owner)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    const reverted = /revert|ERC721NonexistentToken|nonexistent/i.test(message)
+    throw new AgentResolveError(
+      reverted
+        ? `agent ${agentId} is not registered in the identity registry on chain ${chainId}`
+        : `could not read ownerOf for agent ${agentId} on chain ${chainId}`,
+      { retryable: !reverted, cause: err },
+    )
+  }
 }
 
 /**

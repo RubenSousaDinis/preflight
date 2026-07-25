@@ -17,20 +17,19 @@ const TOTAL = 3;
 export const ENS_SLIDES: ReactNode[] = [
   <Slide key="1" tone="dark" eyebrow="ENS TRACK" index={1} total={TOTAL}>
     <h1 className="mb-9 max-w-[1520px] font-display text-[88px] leading-[1.05] font-semibold tracking-[-2.1px]">
-      A grade an agent carries in its own name.
+      An optional name an agent&apos;s owner can carry.
     </h1>
     <p className="mb-12 max-w-[1320px] text-[34px] leading-[1.45] text-dark-text">
-      Preflight publishes a grade to the ERC-8004 Validation Registry, which a
-      gate reads by agent id. ENS makes that trust surface discoverable from the
-      name instead: a subname per graded agent, whose text records carry the
-      letter, the evidence pointer, and the record they were copied from. The
-      registry stays the source. The name carries a copy of it.
+      Preflight grades by registry id. ENS is discoverability on top: a claimed
+      subname under preflight.basetest.eth whose text records mirror the
+      ValidationRegistry. The registry stays the source. The name is owned by
+      the agent&apos;s IdentityRegistry owner after claim, not required to grade.
     </p>
     <div className="flex flex-wrap gap-4.5">
       {[
-        "Subname per graded agent",
-        "Twelve text records",
-        "A mirror of the registry",
+        "Grade without ENS",
+        "Claim gives owner the subname",
+        "Twelve text records as a mirror",
       ].map((chip) => (
         <span
           key={chip}
@@ -50,7 +49,7 @@ export const ENS_SLIDES: ReactNode[] = [
     <div className="mb-9">
       <Terminal>
         <div>
-          <Dim>on every publish</Dim> twelve records in one resolver multicall
+          <Dim>on claim + sync</Dim> twelve records when the name is writable
         </div>
         <div>
           {"  "}preflight.grade{"          "}A{"      "}
@@ -84,8 +83,8 @@ export const ENS_SLIDES: ReactNode[] = [
     </div>
     <div className="grid grid-cols-2 gap-7">
       <Card
-        title="A mirror, never a source"
-        body="The registry record is the grade. A reader that trusted a text record over it has inverted the trust order, so the description record says which is which, and the console labels every value that came from a name as a copy. The same rule already governs the Hedera consensus mirror."
+        title="Claim is optional"
+        body="Grading and publishing work without a name. Claim creates agent{id} under the Preflight parent with owner = IdentityRegistry ownerOf. Sync writes mirror texts only when that name already exists and the validator can still write; publish never auto-creates a subname."
       />
       <Card
         title="It cannot fail a verdict"

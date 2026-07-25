@@ -57,6 +57,7 @@ export const ENS_REGISTRY_ABI = parseAbi([
   'function owner(bytes32 node) view returns (address)',
   'function resolver(bytes32 node) view returns (address)',
   'function setSubnodeRecord(bytes32 node, bytes32 label, address owner, address resolver, uint64 ttl)',
+  'function setOwner(bytes32 node, address owner)',
 ])
 
 export const ENS_RESOLVER_ABI = parseAbi([
@@ -190,25 +191,32 @@ export async function planSubname(
   ])
 
   const intendedOwner = getAddress(options.owner ?? validatorAddress())
+  // The parent owner is who may call setSubnodeRecord. That is the validator for this
+  // project, and it is not the same address as the subname owner after a claim.
+  const creator = getAddress(validatorAddress())
   const configuredResolver = options.resolver ?? target.resolver
   const intendedResolver = getAddress(configuredResolver ?? parentResolver)
 
   let refusal: string | null = null
   if (parentOwner === ZERO_ADDRESS) {
     refusal = `${target.parent} has no owner in the registry at ${getAddress(target.registry)} on chain ${target.chainId}, so it is either unregistered or on another chain`
-  } else if (parentOwner !== intendedOwner) {
-    refusal = `${target.parent} is owned by ${parentOwner}, and the subname would be created by ${intendedOwner}, which the registry will reject`
-  } else if (currentOwner !== ZERO_ADDRESS && currentOwner !== intendedOwner) {
+  } else if (parentOwner !== creator) {
+    refusal = `${target.parent} is owned by ${parentOwner}, and the subname would be created by ${creator}, which the registry will reject`
+  } else if (
+    currentOwner !== ZERO_ADDRESS &&
+    currentOwner !== intendedOwner &&
+    currentOwner !== creator
+  ) {
     refusal = `${name} is already owned by ${currentOwner}, so this mirror will not overwrite it`
   } else if (intendedResolver === ZERO_ADDRESS) {
     refusal = `neither ${ENV.ensResolverAddress} nor ${target.parent} names a resolver, and a subname with no resolver would answer nothing`
   }
 
   const action: SubnamePlan['action'] =
-    currentOwner === ZERO_ADDRESS
-      ? 'create'
-      : currentResolver === intendedResolver
-        ? 'unchanged'
+    currentOwner === intendedOwner && currentResolver === intendedResolver
+      ? 'unchanged'
+      : currentOwner === ZERO_ADDRESS
+        ? 'create'
         : 'repoint'
 
   return {
@@ -358,6 +366,98 @@ export async function ensureSubname(
     owner: confirmed.currentOwner,
     resolver: confirmed.currentResolver,
   }
+}
+
+/**
+ * Claims `agent{id}` under the Preflight parent for the IdentityRegistry owner.
+ *
+ * Creates the name (and optionally seeds the mirror while the validator can still write), then
+ * points ownership at `ownerOf(agentId)`. Grading does not require this; it is discoverability.
+ */
+export async function claimSubname(
+  agentId: AgentId,
+  options: EnsClientOptions & {
+    /** Injected identity owner, for tests. */
+    agentOwner?: Address
+    wallet?: WalletClient
+    /** When set, write mirror records before transferring ownership. */
+    records?: Partial<Record<EnsKey, string>>
+  } = {},
+): Promise<SubnameResult & { agentOwner: Address }> {
+  const agentOwner = getAddress(
+    options.agentOwner ?? (await readIdentityOwner(agentId, { client: options.client })),
+  )
+
+  const existing = await planSubname(agentId, { ...options, owner: agentOwner })
+  if (existing.refusal !== null) throw new EnsMirrorError(existing.refusal)
+  if (existing.action === 'unchanged') {
+    return {
+      plan: existing,
+      txHash: null,
+      owner: existing.currentOwner,
+      resolver: existing.currentResolver,
+      agentOwner,
+    }
+  }
+
+  // Seed under the validator first when we have records to write: after transfer, only the
+  // agent owner (or an operator they approve) can setText on the public resolver.
+  const validator = getAddress(validatorAddress())
+  if (options.records !== undefined && Object.keys(options.records).length > 0) {
+    const underValidator = await planSubname(agentId, { ...options, owner: validator })
+    if (underValidator.refusal !== null) throw new EnsMirrorError(underValidator.refusal)
+    if (underValidator.action !== 'unchanged') {
+      await ensureSubname(agentId, { ...options, owner: validator })
+    }
+    await writeRecords(agentId, options.records, options)
+  }
+
+  const result = await ensureSubname(agentId, { ...options, owner: agentOwner })
+  return { ...result, agentOwner }
+}
+
+async function readIdentityOwner(
+  agentId: AgentId,
+  options: { client?: PublicClient } = {},
+): Promise<Address> {
+  try {
+    const { readAgentOwner } = await import('../identity-registry.ts')
+    return await readAgentOwner(agentId, { client: options.client })
+  } catch (err) {
+    throw new EnsMirrorError(
+      `could not read ownerOf(${agentId}) from the identity registry, so the name cannot be claimed`,
+      { cause: err },
+    )
+  }
+}
+
+/**
+ * Whether the validator can still write mirror texts for this agent.
+ *
+ * True only when the subname already exists under the validator. Unclaimed names are not created
+ * here: claim is explicit. Owner-held names need the owner (or an approved operator) to sync.
+ */
+export async function canValidatorWriteMirror(
+  agentId: AgentId,
+  options: EnsClientOptions = {},
+): Promise<{ writable: boolean; reason: string | null; plan: SubnamePlan }> {
+  const plan = await planSubname(agentId, { ...options, owner: validatorAddress() })
+  if (plan.currentOwner === ZERO_ADDRESS || plan.currentResolver === ZERO_ADDRESS) {
+    return {
+      writable: false,
+      reason: `${plan.name} is not claimed yet; claim it before mirroring a grade onto the name`,
+      plan,
+    }
+  }
+  const validator = getAddress(validatorAddress())
+  if (plan.currentOwner !== validator) {
+    return {
+      writable: false,
+      reason: `${plan.name} is owned by ${plan.currentOwner}, so the validator cannot write its text records`,
+      plan,
+    }
+  }
+  return { writable: true, reason: null, plan }
 }
 
 async function waitForSubnameOwner(

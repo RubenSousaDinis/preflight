@@ -3,16 +3,18 @@
 import { startTransition, useActionState, useMemo, useRef, useState } from "react";
 import { filterAgentCatalog } from "../../lib/discover-agents";
 import type { KnownAgentCatalogEntry } from "../../lib/known-agents";
-import { submitAgent, type SubmitResult } from "../../lib/submit";
+import {
+  claimAgent,
+  submitAgent,
+  type ClaimResult,
+  type SubmitResult,
+} from "../../lib/submit";
 import { gradeColor } from "../../lib/tokens";
 import { ErrorState, PulseDots } from "../states";
 
 /*
-  Beat 3's form: searchable catalog of ENS-mirrored agents, then a free-text name.
-
-  The catalog is discovered server-side from the Preflight ENS parent (plus the
-  stage-known set). Search filters that list. Grading still converts the name to
-  an ERC-8004 id via the mirror before resolveAgent runs.
+  Beat 3's form: searchable catalog of registered agents, grade by registry id,
+  optional ENS sub-line when a name is already mirrored. Claim is a separate CTA.
 */
 export function SubmitForm({
   catalog,
@@ -23,23 +25,33 @@ export function SubmitForm({
     SubmitResult | null,
     FormData
   >(submitAgent, null);
+  const [claimResult, claimAction, claimPending] = useActionState<
+    ClaimResult | null,
+    FormData
+  >(claimAgent, null);
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const visible = useMemo(
     () => filterAgentCatalog(catalog, query),
     [catalog, query],
   );
-  const placeholder =
-    catalog.find((agent) => agent.ensName)?.ensName ??
-    "agent8441.preflight.basetest.eth";
+  const mirroredCount = catalog.filter((agent) => agent.ensName !== null).length;
 
-  function gradeKnown(ensName: string) {
-    if (inputRef.current) inputRef.current.value = ensName;
-    setQuery(ensName);
+  function gradeKnown(agentId: string) {
+    if (inputRef.current) inputRef.current.value = agentId;
+    setQuery(agentId);
     const data = new FormData();
-    data.set("ref", ensName);
+    data.set("ref", agentId);
     startTransition(() => {
       formAction(data);
+    });
+  }
+
+  function claimKnown(agentId: string) {
+    const data = new FormData();
+    data.set("agentId", agentId);
+    startTransition(() => {
+      claimAction(data);
     });
   }
 
@@ -55,73 +67,83 @@ export function SubmitForm({
             onChange={(event) => setQuery(event.target.value)}
             autoComplete="off"
             spellCheck={false}
-            placeholder="ENS name, label, or note"
+            placeholder="registry id, label, or ENS name"
             className="mt-1 w-full border border-rule bg-paper px-3 py-2 font-data text-[0.85rem] text-ink outline-none focus:border-accent"
           />
         </label>
 
-        {catalog.length === 0 || catalog.every((agent) => agent.ensName === null) ? (
+        {catalog.length === 0 ? (
           <p className="mt-2 font-data text-[0.8rem] text-ink/55">
-            The ENS mirror is not configured, so there are no names to grade by.
+            No known agents are configured for this booth.
           </p>
         ) : visible.length === 0 ? (
           <p className="mt-2 font-data text-[0.8rem] text-ink/55">
-            No mirrored agents match {JSON.stringify(query.trim())}.
+            No agents match {JSON.stringify(query.trim())}.
           </p>
         ) : (
           <ul className="mt-2 max-h-[22rem] divide-y divide-rule overflow-y-auto border border-rule">
-            {visible.map((agent) =>
-              agent.ensName === null ? null : (
-                <li key={agent.ensName}>
-                  <button
-                    type="button"
-                    disabled={isPending}
-                    onClick={() => gradeKnown(agent.ensName!)}
-                    className="flex w-full items-baseline gap-3 px-3 py-2.5 text-left transition-colors hover:bg-band/60 disabled:opacity-50"
-                  >
-                    <span className="min-w-0 flex-1">
-                      <span className="block font-data text-[0.85rem] break-all text-ink">
+            {visible.map((agent) => (
+              <li key={agent.id} className="flex items-stretch">
+                <button
+                  type="button"
+                  disabled={isPending || claimPending}
+                  onClick={() => gradeKnown(agent.id)}
+                  className="flex min-w-0 flex-1 items-baseline gap-3 px-3 py-2.5 text-left transition-colors hover:bg-band/60 disabled:opacity-50"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-data text-[0.85rem] text-ink">
+                      {agent.id}
+                      <span className="text-ink/45"> · {agent.label}</span>
+                    </span>
+                    {agent.ensName !== null ? (
+                      <span className="mt-0.5 block font-data text-[0.72rem] break-all text-ink/55">
                         {agent.ensName}
                       </span>
-                      <span className="mt-0.5 block text-[0.95rem] leading-snug text-ink/80">
-                        {agent.label}
-                      </span>
-                      <span className="mt-0.5 block font-data text-[0.68rem] text-ink/45">
-                        {agent.note}
-                      </span>
+                    ) : null}
+                    <span className="mt-0.5 block font-data text-[0.68rem] text-ink/45">
+                      {agent.note}
                     </span>
-                    <span className="shrink-0 font-data text-[0.72rem] tracking-[0.08em] text-accent">
-                      grade
-                    </span>
-                  </button>
-                </li>
-              ),
-            )}
+                  </span>
+                  <span className="shrink-0 font-data text-[0.72rem] tracking-[0.08em] text-accent">
+                    grade
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  disabled={isPending || claimPending}
+                  onClick={() => claimKnown(agent.id)}
+                  className="shrink-0 border-l border-rule px-3 font-data text-[0.68rem] tracking-[0.08em] text-ink/55 transition-colors hover:bg-band/60 hover:text-accent disabled:opacity-50"
+                  title="Claim the Preflight ENS subname for this agent's owner"
+                >
+                  claim
+                </button>
+              </li>
+            ))}
           </ul>
         )}
         <p className="mt-2 font-data text-[0.68rem] text-ink/45">
-          {visible.length} of {catalog.filter((agent) => agent.ensName).length}{" "}
-          mirrored names
+          {visible.length} of {catalog.length} agents
+          {mirroredCount > 0 ? ` · ${mirroredCount} with ENS` : ""}
         </p>
       </div>
 
       <form action={formAction} className="flex flex-wrap items-end gap-3">
         <label className="min-w-0 flex-1">
           <span className="block font-data text-[0.64rem] uppercase tracking-[0.16em] text-ink/50">
-            or another ENS name
+            or another registry id
           </span>
           <input
             ref={inputRef}
             name="ref"
             autoComplete="off"
             spellCheck={false}
-            placeholder={placeholder}
+            placeholder="8441"
             className="mt-1 w-full border border-rule bg-paper px-3 py-2 font-data text-[0.85rem] text-ink outline-none focus:border-accent"
           />
         </label>
         <button
           type="submit"
-          disabled={isPending}
+          disabled={isPending || claimPending}
           className="border border-accent px-4 py-2 font-data text-[0.78rem] tracking-[0.1em] text-accent disabled:opacity-50"
         >
           {isPending ? "grading" : "grade it"}
@@ -137,12 +159,24 @@ export function SubmitForm({
           >
             <p className="flex items-center gap-2 font-data text-[0.8rem] text-ink/70">
               <PulseDots />
-              resolving the name, then exercising the target
+              resolving the agent, then exercising the target
             </p>
             <p className="mt-2 text-[0.85rem] leading-snug text-ink/60">
-              The name is converted to a registry id through the ENS mirror, then
-              the target&apos;s own code runs. A grade that arrives instantly would
-              not have run anything.
+              The registry card is fetched, then the target&apos;s own code runs.
+              A grade that arrives instantly would not have run anything.
+            </p>
+          </div>
+        ) : null}
+
+        {claimPending ? (
+          <div
+            className="border border-rule bg-band/50 px-4 py-3"
+            role="status"
+            aria-live="polite"
+          >
+            <p className="flex items-center gap-2 font-data text-[0.8rem] text-ink/70">
+              <PulseDots />
+              claiming the ENS subname for the agent owner
             </p>
           </div>
         ) : null}
@@ -163,7 +197,8 @@ export function SubmitForm({
         {!isPending && result?.kind === "graded" ? (
           <div className="border border-rule bg-band/50 px-4 py-3">
             <p className="font-data text-[0.74rem] break-all text-ink/55">
-              {result.ref}
+              agent {result.agentId}
+              {result.ref !== result.agentId ? ` · via ${result.ref}` : ""}
             </p>
             <p className="mt-1 flex items-baseline gap-3">
               <span
@@ -182,6 +217,43 @@ export function SubmitForm({
             <p className="mt-2 font-data text-[0.72rem] text-ink/50">
               {result.methodologyVersion} / {result.endpointsGraded} endpoint
               {result.endpointsGraded === 1 ? "" : "s"} graded
+            </p>
+            <button
+              type="button"
+              disabled={claimPending}
+              onClick={() => claimKnown(result.agentId)}
+              className="mt-3 border border-rule px-3 py-1.5 font-data text-[0.72rem] tracking-[0.08em] text-ink/70 transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
+            >
+              claim ENS for owner
+            </button>
+          </div>
+        ) : null}
+
+        {!claimPending && claimResult?.kind === "invalid" ? (
+          <p className="mt-3 font-data text-[0.8rem] text-grade-f">
+            {claimResult.message}
+          </p>
+        ) : null}
+
+        {!claimPending && claimResult?.kind === "error" ? (
+          <div className="mt-3 space-y-2">
+            <p className="font-data text-[0.74rem] text-ink/55">
+              claim agent {claimResult.agentId}
+            </p>
+            <ErrorState error={claimResult.error} />
+          </div>
+        ) : null}
+
+        {!claimPending && claimResult?.kind === "claimed" ? (
+          <div className="mt-3 border border-rule bg-band/50 px-4 py-3">
+            <p className="font-data text-[0.74rem] break-all text-ink/55">
+              {claimResult.name}
+            </p>
+            <p className="mt-1 text-[0.95rem] text-ink/80">
+              Owned by {claimResult.owner}
+              {claimResult.txHash === null
+                ? " · already claimed"
+                : ` · tx ${claimResult.txHash}`}
             </p>
           </div>
         ) : null}

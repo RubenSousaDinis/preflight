@@ -1,7 +1,6 @@
 import type { AgentId } from "@/src/shared";
 import { ensConfig } from "@/src/shared/config";
 import { readAgentRecords } from "@/src/validator/ens/client";
-import { agentEnsName } from "@/src/validator/ens/names";
 import {
   KNOWN_AGENTS,
   knownAgentsCatalog,
@@ -9,12 +8,11 @@ import {
 } from "./known-agents";
 
 /*
-  Discover agents that can be graded by ENS name.
+  Discover agents that can be graded by registry id.
 
-  ENS has no "list agents" API. What works: probe our Preflight parent for
-  agent{id} subnames that already have a resolver (the ones we mirrored), over a
-  bounded id range, and merge the stage-known set so the booth catalog is never
-  empty when the probe is slow or partial.
+  The stage-known set is always present. When ENS is configured, a bounded probe
+  of agent{id} under the Preflight parent adds an ENS sub-line only when a
+  resolver already answers. Catalog membership never requires a mirrored name.
 */
 
 const DEFAULT_FROM = 8420;
@@ -57,7 +55,7 @@ function knownLabel(id: AgentId): { label: string; note: string } | null {
 }
 
 /**
- * Agents under the Preflight ENS parent that already resolve, ready to grade by name.
+ * Agents available to grade by registry id, with an ENS sub-line when mirrored.
  *
  * Falls back to the static known catalog when ENS is unconfigured. Never throws:
  * a partial probe still returns what it found plus the known set.
@@ -65,18 +63,20 @@ function knownLabel(id: AgentId): { label: string; note: string } | null {
 export async function discoverAgentsForGrade(): Promise<
   KnownAgentCatalogEntry[]
 > {
+  const byId = new Map<string, KnownAgentCatalogEntry>();
+
+  for (const known of knownAgentsCatalog()) {
+    byId.set(known.id, known);
+  }
+
   const config = ensConfig();
-  if (config === null) return knownAgentsCatalog();
+  if (config === null) {
+    return [...byId.values()].sort((a, b) => Number(a.id) - Number(b.id));
+  }
 
   const { from, to } = discoverRange();
   const ids: AgentId[] = [];
   for (let id = from; id <= to; id += 1) ids.push(String(id));
-
-  const byId = new Map<string, KnownAgentCatalogEntry>();
-
-  for (const known of knownAgentsCatalog()) {
-    if (known.ensName !== null) byId.set(known.id, known);
-  }
 
   try {
     await mapPool(ids, PROBE_CONCURRENCY, async (id) => {
@@ -89,12 +89,17 @@ export async function discoverAgentsForGrade(): Promise<
 
         const known = knownLabel(id);
         const grade = read.records["preflight.grade"];
+        const existing = byId.get(id);
         byId.set(id, {
           id,
           ensName: read.name,
-          label: known?.label ?? (grade !== undefined ? `Grade ${grade}` : read.name),
+          label:
+            known?.label ??
+            existing?.label ??
+            (grade !== undefined ? `Grade ${grade}` : `Agent ${id}`),
           note:
             known?.note ??
+            existing?.note ??
             (grade !== undefined
               ? `ENS mirror, published grade ${grade}`
               : "ENS mirror under the Preflight parent"),
@@ -107,19 +112,7 @@ export async function discoverAgentsForGrade(): Promise<
     // Probe failed entirely; keep the known set already loaded.
   }
 
-  // Guarantee every known agent with a derivable name is present even if its
-  // resolver probe raced or rate-limited.
-  for (const known of KNOWN_AGENTS) {
-    if (byId.has(known.id)) continue;
-    byId.set(known.id, {
-      ...known,
-      ensName: agentEnsName(known.id, config.parent),
-    });
-  }
-
-  return [...byId.values()].sort((a, b) =>
-    (a.ensName ?? a.id).localeCompare(b.ensName ?? b.id),
-  );
+  return [...byId.values()].sort((a, b) => Number(a.id) - Number(b.id));
 }
 
 /** Client-side filter for the grade search box. */

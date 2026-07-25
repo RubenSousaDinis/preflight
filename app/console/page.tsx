@@ -174,7 +174,7 @@ export default async function ConsolePage({
             <div className="max-w-[860px]">
               <Head
                 title="Grade an agent"
-                lede="Search agents mirrored under the Preflight ENS parent, or paste another name. The harness reads the agent id from the name, resolves the card, runs the target in a sandbox, and returns a verdict."
+                lede="Search registered agents by id, or paste another ERC-8004 id. ENS under the Preflight parent is optional discoverability; the registry card is what gets graded."
               />
               <div className="grid gap-8 md:grid-cols-[minmax(0,1fr)_15rem] md:items-start">
                 <SubmitForm catalog={await discoverAgentsForGrade()} />
