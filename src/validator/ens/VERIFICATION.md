@@ -113,9 +113,9 @@ agent8427.preflight.base.eth
 
 ## Live pass (2026-07-25, Base Sepolia rehearsal)
 
-Primary target `preflight.base.eth` on Basenames mainnet is still unregistered: the validator had 0 ETH
-on 8453. The Sepolia Basenames parent was used instead. On Sepolia the TLD is `basetest.eth`, not
-`base.eth`, so the parent string that namehashes correctly is `preflight.basetest.eth`.
+Primary target was listed as `preflight.base.eth` on Basenames mainnet; that path is **retired** —
+no mainnet ETH. The Sepolia Basenames parent is the live target. On Sepolia the TLD is `basetest.eth`,
+not `base.eth`, so the parent string that namehashes correctly is `preflight.basetest.eth`.
 
 ```
 target registered:   preflight.basetest.eth / chain 84532
@@ -163,6 +163,7 @@ console: Vercel ENS_* + PREFLIGHT_BOARD_AGENT_IDS="8427 8430 8436 8437 8441" set
          for names to render on the board.
 ```
 
-Still open for mainnet Basenames: fund the validator (~0.005 ETH on 8453), register
-`preflight.base.eth`, flip `ENS_*` to chain 8453 / registry `0xb94704422c2a1E396835A571837Aa5AE53285a95`,
-re-run subname+sync+verify, then point Vercel at the mainnet parent.
+**Policy (settled):** ENS grade-mirror **writes are Base Sepolia only**. A send against any other
+`ENS_CHAIN_ID` is refused in `assertEnsWriteAllowed` so this project never spends mainnet ETH on a
+Basename. The console reads the same Sepolia registry the writes hit — a mirror is useless if read
+from a chain that was never written. `preflight.base.eth` on 8453 is not a follow-up item.

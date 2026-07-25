@@ -7,8 +7,9 @@ import { Card, Dim, Kicker, Slide, Terminal } from "./parts";
   Written against the repository as it stands. The integration is in
   src/validator/ens and app/lib/ens.ts, and every claim on slides 1 and 2 is
   checkable there. Slide 3 tracks the live pass: subnames and records are on
-  preflight.basetest.eth (Base Sepolia Basenames). Mainnet preflight.base.eth
-  is still unfunded. The deck does not lead the build.
+  preflight.basetest.eth (Base Sepolia Basenames). Writes stay on Sepolia on
+  purpose; this project does not spend mainnet ETH on a Basename. The deck
+  does not lead the build.
 */
 
 const TOTAL = 3;
@@ -117,9 +118,8 @@ export const ENS_SLIDES: ReactNode[] = [
           grade B on agent8441
         </div>
         <div>
-          <span className="text-dark-warn">not yet</span> preflight.base.eth on
-          mainnet{"   "}
-          <Dim>validator unfunded on 8453</Dim>
+          <Dim>policy</Dim> writes on Base Sepolia only{"   "}
+          <Dim>no mainnet ETH spent on a name</Dim>
         </div>
       </Terminal>
     </div>
@@ -129,8 +129,8 @@ export const ENS_SLIDES: ReactNode[] = [
         body="Each subname's text records were written from the ValidationRegistry row for that agent, then read back through the configured Basenames registry and L2Resolver. ens verify exits zero only when every key matches. The description record still names the registry as the source."
       />
       <Card
-        title="What remains"
-        body="The primary Basename preflight.base.eth on Base mainnet still needs a funded registration, then the same subname and sync steps with ENS_* pointed at chain 8453. Until then the live mirror is the Sepolia rehearsal, disclosed as such."
+        title="Why Sepolia"
+        body="The grade mirror writes only on Base Sepolia. A mainnet Basename would cost real ETH for no change to the trust model: the ValidationRegistry on Sepolia is still the source, and the name is still a labelled copy. The send path refuses any other ENS_CHAIN_ID."
       />
     </div>
     <Kicker>

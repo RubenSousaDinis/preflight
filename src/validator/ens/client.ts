@@ -21,6 +21,11 @@
  *
  * Nothing here is in a verdict path. The records are a mirror of the ValidationRegistry and the
  * registry stays the source.
+ *
+ * Writes are Base Sepolia only (`ENS_WRITE_CHAIN_ID`). The event mirror lives under
+ * `preflight.basetest.eth`; we do not spend mainnet ETH to register or update a Basename. Reads for
+ * the console use the same configured registry, because a mirror is only useful when read where it
+ * was written.
  */
 
 import {
@@ -62,8 +67,25 @@ export const ENS_RESOLVER_ABI = parseAbi([
 
 export const ZERO_ADDRESS: Address = '0x0000000000000000000000000000000000000000'
 
+/**
+ * The only chain this project will sign ENS writes against.
+ *
+ * Basenames on Base mainnet would cost real ETH. The live mirror is the Sepolia rehearsal parent
+ * `preflight.basetest.eth`, and that is the target, not a stop on the way to mainnet.
+ */
+export const ENS_WRITE_CHAIN_ID: ChainId = 84532
+
 export interface EnsTarget extends EnsConfig {
   parentNode: Hex
+}
+
+/** Refuses a send when `ENS_CHAIN_ID` is anything other than Base Sepolia. */
+export function assertEnsWriteAllowed(target: EnsTarget): void {
+  if (target.chainId !== ENS_WRITE_CHAIN_ID) {
+    throw new EnsMirrorError(
+      `ENS writes are Base Sepolia only (chain ${ENS_WRITE_CHAIN_ID}); ${ENV.ensChainId}=${target.chainId} would spend mainnet ETH and is refused`,
+    )
+  }
 }
 
 /**
@@ -223,6 +245,7 @@ interface SendContext {
  * as somebody else would write a name nobody expected to exist.
  */
 function sendContext(target: EnsTarget, options: { wallet?: WalletClient; client?: PublicClient }): SendContext {
+  assertEnsWriteAllowed(target)
   const key = requireEnv(ENV.validatorPrivateKey, 'writing an ENS record')
   if (!key.startsWith('0x')) {
     throw new ConfigError(`${ENV.validatorPrivateKey} must be a 0x private key`)

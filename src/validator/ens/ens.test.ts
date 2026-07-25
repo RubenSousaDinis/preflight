@@ -214,6 +214,21 @@ test('a subname held by somebody else is refused, never overwritten', async () =
   )
 })
 
+test('a mainnet ENS target is refused before a write key is loaded', async () => {
+  const { client } = fakeChain({ parentResolver: RESOLVER })
+  await assert.rejects(
+    () =>
+      ensureSubname('8427', {
+        target: { ...TARGET, chainId: 8453, parent: 'preflight.base.eth', parentNode: nodeFor('preflight.base.eth') },
+        client,
+        owner: VALIDATOR,
+      }),
+    (err: unknown) =>
+      isPreflightError(err) && err.code === 'ENS' && /Base Sepolia only/.test(err.message),
+    'mainnet writes would spend real ETH and are refused',
+  )
+})
+
 test('a parent we do not own is refused before anything is sent', async () => {
   const { client } = fakeChain({ parentOwner: STRANGER })
   const plan = await planSubname('8427', { target: TARGET, client, owner: VALIDATOR })
