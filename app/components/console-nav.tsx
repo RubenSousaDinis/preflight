@@ -81,7 +81,7 @@ export function ConsoleFooter() {
       >
         <span>
           preflight console / <Link href="/">product page</Link> /{" "}
-          <Link href="/deck">pitch deck</Link>
+          <Link href="/deck">deck</Link>
         </span>
         <span>
           x402 on Hedera / ERC-8004 on Base / nobody can pay for a grade

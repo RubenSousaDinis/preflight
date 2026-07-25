@@ -7,10 +7,43 @@ import {
   PickerAction,
 } from "../agents/agent-catalog-picker";
 import { agentLabelFor } from "../../lib/agent-display";
+import type { DemoRail } from "../../lib/demo-rail";
 import type { KnownAgentCatalogEntry } from "../../lib/known-agents";
 import { ReceiptChain } from "../receipts/receipt-chain";
 import { PaymentSummary } from "./payment-summary";
 import { TranscriptPanel } from "./transcript-panel";
+
+/*
+  What pressing the button does with money, said before it is pressed.
+
+  Three states and no fourth: it settles, it is stubbed, or the environment asked
+  for a rail it cannot supply and the run route will refuse. The refusal case is
+  not folded into the stub case, because "no funds move" and "this will not run"
+  are different answers and only one of them means the beat still works.
+*/
+function RailLine({ rail }: { rail: DemoRail }) {
+  if (rail.error) {
+    return (
+      <p className="font-data text-[0.72rem] text-grade-f">
+        payments are not configured, so a run is refused: {rail.error.reason}
+      </p>
+    );
+  }
+  if (rail.settles) {
+    return (
+      <p className="font-data text-[0.72rem] text-grade-c">
+        this settles real funds: {rail.feeHbar} per call to {rail.payTo} on{" "}
+        {rail.name}, waiting for consensus
+      </p>
+    );
+  }
+  return (
+    <p className="font-data text-[0.72rem] text-ink/55">
+      payments are stubbed here, so no funds move. Every gate decision below it is
+      the real one.
+    </p>
+  );
+}
 
 /** Every receipt the stream carried, in the order the run made them. */
 function receiptsOf(events: HarnessEvent[]): Receipt[] {
@@ -95,10 +128,12 @@ export function LiveRun({
   fixtureEvents,
   catalog,
   defaultCandidateIds,
+  rail,
 }: {
   fixtureEvents: HarnessEvent[];
   catalog: readonly KnownAgentCatalogEntry[];
   defaultCandidateIds: readonly string[];
+  rail: DemoRail;
 }) {
   const [events, setEvents] = useState<HarnessEvent[] | null>(null);
   const [running, setRunning] = useState(false);
@@ -238,6 +273,10 @@ export function LiveRun({
                 ? "pick at least one candidate"
                 : `${candidates.length} candidate${candidates.length === 1 ? "" : "s"}, gated in order`}
             </p>
+          </div>
+
+          <div className="mb-3">
+            <RailLine rail={rail} />
           </div>
 
           {chips.length > 0 ? (

@@ -19,7 +19,7 @@ const DECKS = [
   {
     href: "/decks/hedera",
     label: "Hedera deck",
-    note: "The x402 payment rail the gate authorizes, and the receipt chain mirrored to a consensus topic.",
+    note: "The payment rail the gate authorizes, and the receipt chain mirrored to an HCS topic through the Agent Kit.",
     meta: "3 slides",
   },
   {
@@ -31,8 +31,8 @@ const DECKS = [
   {
     href: "/decks/ens",
     label: "ENS deck",
-    note: "What a name would carry, and an honest account of what is built and what is not.",
-    meta: "2 slides",
+    note: "How a claimed subname mirrors a ValidationRegistry row, and the five names it is live on.",
+    meta: "3 slides",
   },
 ];
 

@@ -21,6 +21,7 @@ import { ReceiptChain } from '../receipts/receipt-chain.ts'
 import { vetAgent } from '../gates/vet/vet-agent.ts'
 import { runTask } from './harness.ts'
 import { hederaBalance, railByName, TINYBAR_PER_HBAR } from './payment-rail.ts'
+import { ENV, optionalEnv } from '../shared/config.ts'
 
 const VALIDATOR = '0x0000000000000000000000000000000000000001' as const
 
@@ -142,7 +143,7 @@ async function beat1(endpoint: string): Promise<boolean> {
       // asked for, the payee defaults to the demo agent's own Hedera account, so the demo command does
       // not carry an account id the operator has to remember.
       rail: railByName(flagValue('rail') ?? 'stub'),
-      payTo: flagValue('pay-to') ?? process.env.A_AGENT_HEDERA_ACCOUNT_ID,
+      payTo: flagValue('pay-to') ?? optionalEnv(ENV.demoPayee),
       vet: async (agentId, policy) =>
         vetAgent(agentId, policy, {
           validator: VALIDATOR,
@@ -225,7 +226,7 @@ async function beat1Live(agentIds: string[]): Promise<boolean> {
     {
       receipts,
       rail,
-      payTo: flagValue('pay-to') ?? process.env.A_AGENT_HEDERA_ACCOUNT_ID,
+      payTo: flagValue('pay-to') ?? optionalEnv(ENV.demoPayee),
       toolName: 'summarize_sources',
     },
   )) {

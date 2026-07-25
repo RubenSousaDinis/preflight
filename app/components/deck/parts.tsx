@@ -57,8 +57,12 @@ export function Slide({
 }
 
 export function Terminal({ children }: { children: ReactNode }) {
+  // whitespace-pre-wrap, because the runs of spaces in these blocks are the
+  // column alignment. HTML collapses them by default, which turns a two-column
+  // log into a paragraph and loses the indent that marks a sub-line. Long lines
+  // still wrap, so pre-wrap rather than pre.
   return (
-    <div className="rounded-[8px] bg-ink px-[46px] py-[38px] font-data text-[26px] leading-[1.85] text-dark-terminal">
+    <div className="rounded-[8px] bg-ink px-[46px] py-[38px] font-data text-[26px] leading-[1.85] whitespace-pre-wrap text-dark-terminal">
       {children}
     </div>
   );

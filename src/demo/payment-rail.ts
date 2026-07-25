@@ -19,8 +19,8 @@
  * call pays twice.
  */
 
-import { HarnessError } from '../shared/errors.ts'
-import { ENV, requireEnv } from '../shared/config.ts'
+import { ConfigError, HarnessError } from '../shared/errors.ts'
+import { ENV, optionalEnv, requireEnv } from '../shared/config.ts'
 
 export interface PaymentReceiptRef {
   /** What the rail calls this settlement. A Hedera transaction id, or a labelled stub reference. */
@@ -178,4 +178,49 @@ export function railByName(name: string, options: TransferOptions = {}): Payment
     default:
       throw new HarnessError(`unknown payment rail ${JSON.stringify(name)}`)
   }
+}
+
+export interface ConfiguredRail {
+  rail: PaymentRail
+  /** The account a settled fee is paid to, absent when nothing settles. */
+  payTo?: string
+}
+
+/**
+ * The rail a hosted run settles on, resolved from the environment.
+ *
+ * Two rules, and both are about where a failure lands.
+ *
+ * **The default is the stub.** A deployment that says nothing about payment does not spend, because
+ * the alternative is a public page whose Run button moves funds on every click of every passer-by.
+ *
+ * **Misconfiguration throws here, before the run starts,** rather than at the first `pay` call. The
+ * loop pays for a call before it makes it, so a rail that only fails once the run is underway has
+ * already hired an agent it cannot pay. Refusing to start is the version of that this project can
+ * ship; refusing halfway is not.
+ */
+export function railFromEnv(): ConfiguredRail {
+  const name = optionalEnv(ENV.demoRail) ?? 'stub'
+
+  if (name === 'stub') return { rail: stubbedRail }
+
+  if (name === 'hedera-x402') {
+    // Refused by name rather than left to fail as an unreadable timeout. The harness passes one
+    // `payTo` as both the payee account and the x402 resource, and nothing in this repo answers a
+    // 402, so selecting this rail would POST to an account id as though it were a URL.
+    throw new ConfigError(
+      `${ENV.demoRail}=hedera-x402 cannot run here: no endpoint in this project issues a 402 challenge, and the payee is configured as an account id rather than a resource URL`,
+    )
+  }
+
+  if (name !== 'hedera-transfer') {
+    throw new ConfigError(
+      `${ENV.demoRail}=${JSON.stringify(name)} is not a rail; it is one of stub, hedera-transfer, hedera-x402`,
+    )
+  }
+
+  const why = 'a hosted run that settles on Hedera'
+  requireEnv(ENV.hederaAccountId, why)
+  requireEnv(ENV.hederaPrivateKey, why)
+  return { rail: hederaTransferRail(), payTo: requireEnv(ENV.demoPayee, why) }
 }

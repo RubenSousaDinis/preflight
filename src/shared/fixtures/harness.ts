@@ -69,8 +69,10 @@ export const FIXTURE_HARNESS_EVENTS: HarnessEvent[] = [
     at: FIXTURE_RAN_AT + 9,
     agentId: FIXTURE_AGENT_A,
     amount: FEE,
-    rail: 'hedera-x402',
-    txRef: 'fixture-payment-reference',
+    // The rail and reference of the run that actually settled (src/demo/VERIFICATION.md, B3), so the
+    // stream the console shows before anyone presses Run points at a transaction that exists.
+    rail: 'hedera-transfer',
+    txRef: '0.0.9695674@1784942480.789267915',
     receipt: FIXTURE_RECEIPT_PAID,
   },
   {

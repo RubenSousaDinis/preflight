@@ -1,9 +1,29 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { HarnessError } from '../shared/errors.ts'
+import { ConfigError, HarnessError } from '../shared/errors.ts'
+import { ENV } from '../shared/config.ts'
 import { Budget } from './budget.ts'
-import { railByName, stubbedRail, TINYBAR_PER_HBAR } from './payment-rail.ts'
+import { railByName, railFromEnv, stubbedRail, TINYBAR_PER_HBAR } from './payment-rail.ts'
+
+/** Runs `body` with exactly the given payment variables set, restoring the environment after. */
+function withEnv(vars: Record<string, string | undefined>, body: () => void): void {
+  const names = [ENV.demoRail, ENV.demoPayee, ENV.hederaAccountId, ENV.hederaPrivateKey]
+  const saved = Object.fromEntries(names.map((name) => [name, process.env[name]]))
+  try {
+    for (const name of names) delete process.env[name]
+    for (const [name, value] of Object.entries(vars)) {
+      if (value !== undefined) process.env[name] = value
+    }
+    body()
+  } finally {
+    for (const name of names) {
+      const value = saved[name]
+      if (value === undefined) delete process.env[name]
+      else process.env[name] = value
+    }
+  }
+}
 
 test('a budget tracks total, spent and remaining, and all three are readable', () => {
   const budget = new Budget(1_000n)
@@ -74,6 +94,61 @@ test('the x402 rail refuses without a resource, rather than falling back to an u
     () => railByName('hedera-x402').pay({ to: '0.0.1', amount: 1n }),
     /needs the resource URL/,
   )
+})
+
+test('a deployment that says nothing about payment settles nothing', () => {
+  withEnv({}, () => {
+    const configured = railFromEnv()
+    assert.equal(configured.rail.name, 'stub')
+    assert.equal(configured.payTo, undefined)
+  })
+})
+
+test('a settling rail resolves with the payee it will credit', () => {
+  withEnv(
+    {
+      [ENV.demoRail]: 'hedera-transfer',
+      [ENV.hederaAccountId]: '0.0.9695674',
+      [ENV.hederaPrivateKey]: '0xabc',
+      [ENV.demoPayee]: '0.0.9737723',
+    },
+    () => {
+      const configured = railFromEnv()
+      assert.equal(configured.rail.name, 'hedera-transfer')
+      assert.equal(configured.payTo, '0.0.9737723')
+    },
+  )
+})
+
+test('a settling rail with no payer key is refused before the run starts, not during it', () => {
+  withEnv({ [ENV.demoRail]: 'hedera-transfer', [ENV.demoPayee]: '0.0.9737723' }, () => {
+    assert.throws(() => railFromEnv(), ConfigError)
+  })
+})
+
+test('a settling rail with no payee is refused rather than paying the agent id', () => {
+  withEnv(
+    {
+      [ENV.demoRail]: 'hedera-transfer',
+      [ENV.hederaAccountId]: '0.0.9695674',
+      [ENV.hederaPrivateKey]: '0xabc',
+    },
+    () => {
+      assert.throws(() => railFromEnv(), new RegExp(ENV.demoPayee))
+    },
+  )
+})
+
+test('the x402 rail is refused by name, because nothing here issues a 402', () => {
+  withEnv({ [ENV.demoRail]: 'hedera-x402' }, () => {
+    assert.throws(() => railFromEnv(), /no endpoint in this project issues a 402/)
+  })
+})
+
+test('an unknown rail name is refused rather than quietly stubbed', () => {
+  withEnv({ [ENV.demoRail]: 'mock' }, () => {
+    assert.throws(() => railFromEnv(), /is not a rail/)
+  })
 })
 
 test('a fee expressed in tinybars converts the way the log reports it', () => {
