@@ -30,11 +30,9 @@ function Row({ entry }: { entry: BoardEntry }) {
   return (
     <article className={`${ROW_GRID} px-4 py-4 sm:px-5`}>
       <div className="min-w-0">
-        <p className="font-display text-[1.05rem] leading-tight font-semibold break-words">
-          {entry.name || entry.agentId}
-        </p>
-        <p className="mt-0.5 font-data text-[0.7rem] break-all text-ink/50">
-          {entry.agentId}
+        <p className="font-data text-[0.95rem] break-all">{entry.agentId}</p>
+        <p className="mt-0.5 font-data text-[0.68rem] break-all text-ink/45">
+          {entry.record.tag}
         </p>
       </div>
       <div>
@@ -65,10 +63,19 @@ export function Leaderboard({ board }: { board: BoardRead }) {
 
   if (board.entries.length === 0) {
     return (
-      <EmptyState>
-        Nothing has been graded yet. Submit an agent below and it appears here
-        with its grade, its score, and the validator that stands behind it.
-      </EmptyState>
+      <div className="space-y-3">
+        <EmptyState>
+          No listable record for the agents this board was asked about. Submit an
+          agent below, or add an id to the address bar as ?agents=, and it appears
+          here once its record is published.
+        </EmptyState>
+        {board.unlisted.length > 0 ? (
+          <p className="font-data text-[0.75rem] break-all text-ink/55">
+            asked about {board.unlisted.join(", ")} / nothing listable from this
+            validator
+          </p>
+        ) : null}
+      </div>
     );
   }
 
@@ -95,11 +102,17 @@ export function Leaderboard({ board }: { board: BoardRead }) {
           ))}
         </ul>
       </div>
-      <p className="mt-2 font-data text-[0.72rem] text-ink/50">
+      <p className="mt-2 font-data text-[0.72rem] break-all text-ink/50">
         {board.readAtBlock === null
-          ? "read height not reported by this build"
-          : `read at block ${board.readAtBlock}`}
+          ? "read height not reported"
+          : `read at block ${board.readAtBlock} on chain ${board.chainId}`}
+        {board.validator === null ? "" : ` / validator ${board.validator}`}
       </p>
+      {board.unlisted.length > 0 ? (
+        <p className="mt-1 font-data text-[0.72rem] break-all text-ink/50">
+          not listed: {board.unlisted.join(", ")}
+        </p>
+      ) : null}
       <p className="mt-2 max-w-[46rem] text-[0.85rem] leading-snug text-ink/60">
         A record written by any other validator is not listed here, and neither is
         an expired one. Both are treated as absent rather than as a weaker grade.

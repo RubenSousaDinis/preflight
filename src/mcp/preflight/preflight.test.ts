@@ -286,6 +286,18 @@ test('a missing ref refuses rather than throwing a schema error at the caller', 
   assert.match((payload as { reason: string }).reason, /ref must be/)
 })
 
+test('an agent id sent as a number is accepted, because it is the same value', async () => {
+  await resetToolSurface()
+  const vet = realVet('baseline')
+  const asNumber = (await call(AGENT_TOOL, { ref: 8427 } as unknown as JsonValue, { vet })).payload
+  const asString = (await call(AGENT_TOOL, { ref: '8427' }, { vet })).payload
+  assert.deepEqual(asNumber, asString, 'a stock client that coerces the id must get the same verdict')
+
+  // A non-integer is still refused: it is not an id, and guessing is not this tool's job.
+  const fractional = (await call(AGENT_TOOL, { ref: 1.5 } as unknown as JsonValue, { vet })).payload
+  assert.equal((fractional as { verdict: string }).verdict, 'REFUSE')
+})
+
 test('an unknown tool is a protocol error, because it is not a verdict about anything', async () => {
   const response = (await dispatch({
     jsonrpc: '2.0',

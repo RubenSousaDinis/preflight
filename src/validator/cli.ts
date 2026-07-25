@@ -9,9 +9,18 @@
  *   node --env-file-if-exists=.env.local src/validator/cli.ts scan 1 25 [--chain 8453]
  */
 
+import { createWalletClient, getAddress, http } from 'viem'
+import { privateKeyToAccount } from 'viem/accounts'
+
 import { isPreflightError, reasonOf } from '../shared/errors.ts'
+import { ENV, identityRegistryFor, requireEnv, rpcUrlFor } from '../shared/config.ts'
 import type { AgentCard } from '../shared/types.ts'
-import { identityChainId } from './identity-registry.ts'
+import {
+  IDENTITY_REGISTRY_ABI,
+  buildAgentCard,
+  identityChainId,
+  publicClientFor,
+} from './identity-registry.ts'
 import { resolveAgentDetailed } from './resolve-agent.ts'
 import { gradeAgent } from './grade-agent.ts'
 import { canonicalize } from './canonical.ts'
@@ -235,9 +244,97 @@ async function watch(endpoint: string): Promise<boolean> {
   return regraded.length > 0
 }
 
+/**
+ * Points an agent you already own at an MCP endpoint, so it has a surface to grade.
+ *
+ * D1 support, and the thing that unblocks A3b: an agent registered with a placeholder card has nothing
+ * to grade, and gradeAgent refuses it for exactly the right reason. The card is written inline as a data
+ * URI, so no hosting is needed and it resolves the moment the transaction lands.
+ *
+ * Without --send it prints the card and the call and stops.
+ */
+async function setCard(agentId: string, chainId: number): Promise<boolean> {
+  const endpoint = flagValue('endpoint')
+  if (endpoint === undefined) {
+    console.log('set-card needs --endpoint <mcp url>')
+    return false
+  }
+  const { card, dataUri } = buildAgentCard({
+    name: flagValue('name') ?? `preflight-demo-${agentId}`,
+    endpoint,
+    version: flagValue('version'),
+  })
+  const registry = identityRegistryFor(chainId)
+  const registering = agentId === 'new'
+
+  console.log(`registry      ${registry} on chain ${chainId}`)
+  console.log(`card          ${JSON.stringify(card)}`)
+  console.log(`agentURI      ${dataUri.slice(0, 80)}… (${dataUri.length} chars)`)
+  console.log(
+    registering
+      ? 'call          register(agentURI) -> a new agent id, owned by the sender'
+      : `call          setAgentURI(${agentId}, agentURI) -> the sender must own the agent`,
+  )
+
+  if (!process.argv.includes('--send')) {
+    console.log('\nnothing was sent. re-run with --send to write the card.')
+    return true
+  }
+
+  const key = requireEnv(ENV.validatorPrivateKey, 'writing an agent card')
+  const account = privateKeyToAccount(key as `0x${string}`)
+  const wallet = createWalletClient({ account, transport: http(rpcUrlFor(chainId)) })
+  const reader = publicClientFor(chainId)
+
+  if (!registering) {
+    const owner = await reader.readContract({
+      address: registry,
+      abi: IDENTITY_REGISTRY_ABI,
+      functionName: 'ownerOf',
+      args: [BigInt(agentId)],
+    })
+    if (getAddress(owner) !== getAddress(account.address)) {
+      console.log(`refused: agent ${agentId} is owned by ${owner}, and the loaded key signs as ${account.address}`)
+      return false
+    }
+  }
+
+  const hash = registering
+    ? await wallet.writeContract({
+        address: registry,
+        abi: IDENTITY_REGISTRY_ABI,
+        functionName: 'register',
+        args: [dataUri],
+        account,
+        chain: null,
+      })
+    : await wallet.writeContract({
+        address: registry,
+        abi: IDENTITY_REGISTRY_ABI,
+        functionName: 'setAgentURI',
+        args: [BigInt(agentId), dataUri],
+        account,
+        chain: null,
+      })
+  const receipt = await reader.waitForTransactionReceipt({ hash })
+  console.log(`\nlanded        ${hash} (${receipt.status})`)
+  if (receipt.status !== 'success') return false
+  if (!registering) {
+    // Confirm by resolving it: a send receipt is not evidence that the card reads back.
+    const resolved = await resolveAgentDetailed(agentId, { chainId })
+    console.log(`resolved      ${resolved.card.name} -> ${resolved.card.mcpEndpoints.join(', ')}`)
+  }
+  return true
+}
+
 async function main(): Promise<void> {
   const [command, ...rest] = process.argv.slice(2)
   const chainId = Number(flagValue('chain') ?? identityChainId())
+
+  if (command === 'set-card') {
+    process.exitCode = (await setCard(rest[0], chainId)) ? 0 : 1
+    return
+  }
 
   if (command === 'watch') {
     process.exitCode = (await watch(rest[0])) ? 0 : 1
@@ -337,6 +434,7 @@ async function main(): Promise<void> {
       '  cli.ts verify-evidence <uri> <expectedHash>',
       '  cli.ts watch <mcp url> [--interval 5000] [--rounds 6] [--flip-at 2] [--flip-to drifted] [--bump-version 1.1.0]',
       '  cli.ts current <agentId> [--validator <address>]',
+      '  cli.ts set-card <agentId|new> --endpoint <mcp url> [--name <name>] [--version <v>] [--send]',
       '  cli.ts methodology',
     ].join('\n'),
   )

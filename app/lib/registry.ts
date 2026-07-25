@@ -1,40 +1,36 @@
-import type { AgentId, Grade, ValidationRecord } from "@/src/shared";
+import { readerFor } from "@/src/gates/tx/rpc";
+import { validationRegistry, validatorAddress } from "@/src/shared/config";
 import { gradeForScore } from "@/src/shared";
-import {
-  FIXTURE_CARD_A,
-  FIXTURE_CARD_DRIFTED,
-  FIXTURE_CARD_F,
-  FIXTURE_RECORD_A,
-  FIXTURE_RECORD_DRIFTED,
-  FIXTURE_RECORD_EXPIRED,
-  FIXTURE_RECORD_F,
-  FIXTURE_RECORD_WRONG_VALIDATOR,
-  FIXTURE_VALIDATOR,
-  FIXTURE_RAN_AT,
-} from "@/src/shared/fixtures";
-import type { RenderableError } from "./errors";
+import type { AgentId, Grade, ValidationRecord } from "@/src/shared";
+import { readValidation } from "@/src/validator/validation-registry";
+import { toRenderableError, type RenderableError } from "./errors";
 
 /**
  * The one registry read module.
  *
- * Every list on this surface reads through here and nothing in app/ calls
- * readValidation directly. That is an acceptance test rather than a preference:
- * open the network tab on the stage build and the reads have to be uniform, which
- * they cannot be if three views each grow their own path.
+ * Every list on this surface reads through here and nothing else in app/ calls
+ * readValidation. That is an acceptance test rather than a preference: open the
+ * network tab on the stage build and the reads have to be uniform, which they
+ * cannot be if three views each grow their own path.
+ *
+ * There is no indexer between this and the chain. The subgraph left the board with
+ * the 7/24 partner swap, so the board reads the registry direct.
  */
 
 export type BoardEntry = {
   agentId: AgentId;
-  name: string;
   record: ValidationRecord;
   grade: Grade;
 };
 
 export type BoardRead = {
   entries: BoardEntry[];
-  /** The height the board was read at. Rendered, so a stale board says it is stale. */
+  /** Ids asked for that the registry had nothing listable for. */
+  unlisted: AgentId[];
+  /** The height the board was read at. Rendered, so a stale board says so. */
   readAtBlock: string | null;
-  /** When set, the board renders this and lists nothing. */
+  chainId: number | null;
+  validator: string | null;
   error: RenderableError | null;
 };
 
@@ -43,12 +39,11 @@ const GRADE_ORDER: Grade[] = ["A", "B", "C", "D", "F"];
 /**
  * A record this surface will list, per 01-INTERFACES section 3.
  *
- * Absent, expired, and written by another validator are the same answer: not
- * listed. An expired A on a projector is a claim the system does not make, and a
- * foreign record is a grade nobody here stands behind.
- *
- * TODO-INTEGRATE: on the live path readValidation applies both rules below the
- * caller, and this function goes away with the fixture path it exists for.
+ * readValidation already applies both rules below the caller, so on the live path
+ * this only ever re-states what it returned. It stays because it is also the
+ * statement of the rule: absent, expired, and written by another validator are the
+ * same answer, which is not listed. An expired A on a projector is a claim the
+ * system does not make, and a foreign record is a grade nobody here stands behind.
  */
 export function isListable(
   record: ValidationRecord,
@@ -60,48 +55,89 @@ export function isListable(
   return true;
 }
 
-function entryFor(
-  record: ValidationRecord,
-  name: string,
-): BoardEntry | null {
-  // The letter comes back from the onchain score and is never recomputed here.
-  // A score off the 25 point scale did not come from this methodology, and
-  // guessing a letter for it would put an unearned grade on a big screen.
+function entryFor(record: ValidationRecord): BoardEntry | null {
+  // The letter comes back from the onchain score and is never recomputed here. A
+  // score off the 25 point scale did not come from this methodology, and guessing
+  // a letter for it would put an unearned grade on a big screen.
   const grade = gradeForScore(record.score);
   if (grade === null) return null;
-  return { agentId: record.agentId, name, record, grade };
+  return { agentId: record.agentId, record, grade };
 }
 
-/*
-  TODO-INTEGRATE: A3b's readValidation is the live read, and A4 has to deploy the
-  ValidationRegistry before it can return anything. Until both are true the board
-  reads the frozen fixture records through this same function, so the filtering
-  rules above are exercised now rather than discovered on stage.
+/**
+ * Read the board for a given set of subjects.
+ *
+ * The registry has no enumeration: a record is found by agent id, so the caller
+ * says which agents the board is about. On stage that list comes from the URL,
+ * which also means the operator can add one mid-demo without a deploy.
+ *
+ * One failed read fails the whole board rather than quietly listing the rest. A
+ * board missing a row for a reason nobody can see is worse than a board that says
+ * it could not read the chain.
+ */
+export async function readBoard(agentIds: AgentId[]): Promise<BoardRead> {
+  const empty = {
+    entries: [],
+    unlisted: [],
+    readAtBlock: null,
+    chainId: null,
+    validator: null,
+  };
 
-  When it flips, this function calls readValidation(agentId, validator) per subject
-  and reads the head block once, and everything above it stays as it is.
-*/
-export async function readBoard(): Promise<BoardRead> {
-  const now = FIXTURE_RAN_AT;
-  const candidates: { record: ValidationRecord; name: string }[] = [
-    { record: FIXTURE_RECORD_A, name: FIXTURE_CARD_A.name },
-    { record: FIXTURE_RECORD_F, name: FIXTURE_CARD_F.name },
-    { record: FIXTURE_RECORD_DRIFTED, name: FIXTURE_CARD_DRIFTED.name },
-    { record: FIXTURE_RECORD_EXPIRED, name: "Expired record, not listed" },
-    {
-      record: FIXTURE_RECORD_WRONG_VALIDATOR,
-      name: "Another validator's record, not listed",
-    },
-  ];
+  const wanted = [...new Set(agentIds.map((id) => id.trim()).filter(Boolean))];
+  if (wanted.length === 0) {
+    return { ...empty, error: null };
+  }
 
-  const entries = candidates
-    .filter(({ record }) => isListable(record, FIXTURE_VALIDATOR, now))
-    .map(({ record, name }) => entryFor(record, name))
-    .filter((entry): entry is BoardEntry => entry !== null)
-    .sort(
+  try {
+    const { chainId } = validationRegistry();
+    const validator = validatorAddress();
+    const [block, records] = await Promise.all([
+      readerFor(chainId).blockNumber(),
+      Promise.all(wanted.map((id) => readValidation(id, validator))),
+    ]);
+
+    const entries: BoardEntry[] = [];
+    const unlisted: AgentId[] = [];
+    for (let index = 0; index < wanted.length; index += 1) {
+      const record = records[index];
+      const entry = record === null ? null : entryFor(record);
+      if (entry === null) {
+        unlisted.push(wanted[index]);
+        continue;
+      }
+      entries.push(entry);
+    }
+
+    entries.sort(
       (left, right) =>
         GRADE_ORDER.indexOf(left.grade) - GRADE_ORDER.indexOf(right.grade),
     );
 
-  return { entries, readAtBlock: null, error: null };
+    return {
+      entries,
+      unlisted,
+      readAtBlock: block.toString(),
+      chainId,
+      validator,
+      error: null,
+    };
+  } catch (thrown) {
+    return { ...empty, error: toRenderableError(thrown) };
+  }
+}
+
+/**
+ * The subjects the board is about: the URL first, then a configured default.
+ *
+ * Read from process.env directly rather than through the shared config, because
+ * this is which rows a screen shows and not a value any verdict depends on.
+ */
+export function boardSubjects(fromUrl: string | undefined): AgentId[] {
+  const raw = fromUrl ?? process.env.PREFLIGHT_BOARD_AGENT_IDS ?? "";
+  return raw
+    .split(/[\s,]+/)
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0 && value.length <= 100)
+    .slice(0, 25);
 }

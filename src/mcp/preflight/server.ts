@@ -143,9 +143,15 @@ export async function callPreflightAgent(
   args: Record<string, unknown>,
   deps: PreflightDeps = {},
 ): Promise<ToolCallResult> {
-  const ref = args.ref
-  if (typeof ref !== 'string' || ref.trim().length === 0) {
-    return result(refusedDecision('ref must be the agent id to check'))
+  // A stock client may send an agent id as a JSON number: the MCP Inspector coerces `ref=8427` that
+  // way. An id is a decimal string, and an integer carries the same value losslessly, so accepting both
+  // costs nothing and avoids a refusal that reads to the caller as this tool being broken. Anything else
+  // still refuses.
+  const raw = args.ref
+  const ref =
+    typeof raw === 'string' ? raw : typeof raw === 'number' && Number.isInteger(raw) ? String(raw) : null
+  if (ref === null || ref.trim().length === 0) {
+    return result(refusedDecision('ref must be the agent id to check, as a string or an integer'))
   }
   const requested = args.minGrade
   if (requested !== undefined && !isGrade(requested)) {

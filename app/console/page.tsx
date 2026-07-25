@@ -15,7 +15,7 @@ import { loadFirewallQueue } from "../lib/firewall";
 import { FLOOR_POLICY, loadFloor } from "../lib/floor";
 import { readDemoTarget } from "../lib/demo-target";
 import { loadReceipts } from "../lib/receipts";
-import { readBoard } from "../lib/registry";
+import { boardSubjects, readBoard } from "../lib/registry";
 import { loadTranscript } from "../lib/transcript";
 
 export const metadata: Metadata = {
@@ -29,13 +29,18 @@ export const metadata: Metadata = {
 */
 export const dynamic = "force-dynamic";
 
-export default async function ConsolePage() {
+export default async function ConsolePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ agents?: string }>;
+}) {
+  const { agents } = await searchParams;
   const [rows, events, queue, receipts, board, demoTarget] = await Promise.all([
     loadFloor(),
     loadTranscript(),
     loadFirewallQueue(),
     loadReceipts(),
-    readBoard(),
+    readBoard(boardSubjects(agents)),
     readDemoTarget(),
   ]);
   return (
