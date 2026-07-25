@@ -212,3 +212,59 @@ The first real run printed `100000000 on hedera-x402` while the money had moved 
 names the wrong rail on screen is worse than one that names a plainer rail, so the union was widened by
 arbitration and the event now reports whichever rail settled it. The stubbed case says `stub` rather than
 implying a protocol that never ran.
+
+## The deployed server, 2026-07-25
+
+Lane 3's two route files landed, so E1 has a public URL.
+
+```
+deployed url:                 https://preflight-bay.vercel.app/api/demo-agent/mcp
+                              control at /api/demo-agent/variant
+stock client over the public
+internet:                     the MCP Inspector CLI listed 10 tools on page one with a nextCursor,
+                              against the deployed URL. E1 done-when 1, satisfied off localhost.
+```
+
+The team-scoped aliases (`preflight-talent-protocol.vercel.app`, and every per-deployment URL) sit behind
+Vercel deployment protection and answer 302 to an SSO page, so a judge cannot use them. The
+`preflight-bay.vercel.app` alias is public and is the one to put in front of anyone.
+
+### The stateful flip does not survive on serverless, measured
+
+A flip to poisoned answered 200 and read back as poisoned. Twelve consecutive tool calls then all served
+**baseline**, and the control endpoint itself read baseline again: the instance holding that state had been
+recycled within seconds. The consequence was concrete rather than theoretical. Publishing the F row
+against the deployed endpoint graded **B**, because the engine called a clean surface, and that record
+superseded the real F record on chain.
+
+The fix needs no infrastructure and no further route files: **the surface can be named in the URL**.
+`?surface=poisoned` serves exactly that surface for that request, with no state involved, so a target
+that has to be reliably one surface says so in its own URL and the card that points at it records which
+surface was graded. Six consecutive calls to `?surface=poisoned` all served poisoned, while the plain URL
+served baseline in the same window. The flippable path stays for local runs, where one process holds the
+state and it is correct.
+
+### Beat 1's two rows, both public
+
+| Agent | Card endpoint | Grade | Gate | Through a stock MCP client |
+|---|---|---|---|---|
+| 8427 | `…/mcp?surface=baseline` | B, score 75 | HIRE, fingerprintMatch true | HIRE |
+| 8430 | `…/mcp?surface=poisoned` | F, score 0 | REFUSE, "grade F is below the minimum of B" | REFUSE |
+
+```
+8427 response tx   0xbf4bbdfaf693acd9c6b65128c713130bc2b91c56d2ad98698778b5df221fc65a
+8430 response tx   0x404a0130641196bd9afb59ef50949e5c543b4d662baab4ef14de6a444a9bd5dc
+8430 evidence      0G root 0x3ef96ff9157aaf87a29bc4d84129a819fc0eee5218efc2a33b8a89077ec930d6
+```
+
+Both rows resolve from the registry, fetch their evidence from 0G, and re-enumerate a public surface, so
+neither depends on a process running on anyone's laptop.
+
+### Still open
+
+The hostile turn for the *hired* agent still needs either the durable store or a local run: 8427 is graded
+against `?surface=baseline`, and nothing can make that URL turn hostile mid-run by design. The options are
+a durable variant store behind `useVariantStore`, or re-pointing 8427's card to `?surface=poisoned` between
+grading and the call, which works because poisoned and baseline carry byte-identical tool lists and so the
+same fingerprint. The second needs no infrastructure and is one transaction, and it reads honestly as the
+agent changing what it points at.
