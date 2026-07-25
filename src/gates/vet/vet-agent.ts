@@ -35,8 +35,8 @@ import { resolveAgent, type ResolveAgentOptions } from '../../validator/resolve-
 import { baselineToolFingerprint } from '../../validator/grade-agent.ts'
 import { canonicalizeValue, hashCanonical } from '../../validator/canonical.ts'
 import {
+  readCurrentValidation,
   readForeignValidators,
-  readValidationWithEvidence,
   type ReadOptions,
 } from '../../validator/validation-registry.ts'
 import { fetchPublishedEvidence } from '../../validator/pin-evidence.ts'
@@ -100,14 +100,19 @@ export async function vetAgent(
   // --- 1. the record, filtered to our validator -----------------------------
   let record: GateRecord | null
   try {
-    record =
-      options.readRecord !== undefined
-        ? await options.readRecord(agentId)
-        : await readValidationWithEvidence(agentId, validator, {
-            ...options.read,
-            now,
-            includeExpired: true,
-          })
+    if (options.readRecord !== undefined) {
+      record = await options.readRecord(agentId)
+    } else {
+      // Ordered by block, not by wall clock. An agent that has been re-graded carries two records, and
+      // two transactions can share a consensus second, so selecting by `lastUpdate` would pick the
+      // superseded one roughly half the time it matters, which is exactly the case beat 4 creates.
+      const current = await readCurrentValidation(agentId, validator, {
+        ...options.read,
+        now,
+        includeExpired: true,
+      })
+      record = current?.record ?? null
+    }
   } catch (err) {
     // A gate that cannot read its source of truth has no basis to hire.
     return withReceipt(

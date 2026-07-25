@@ -286,3 +286,78 @@ test('the graded baseline derives from the evidence, matching what the engine re
   assert.equal(baselineToolFingerprint(bundle), fingerprintOf('baseline'))
   await resetToolSurface()
 })
+
+// --- the record the gate selects when an agent has been re-graded ----------
+
+/**
+ * A registry with two records for one agent, sharing a consensus second.
+ *
+ * This is the shape beat 4 creates: an A record and the F record that superseded it. Ordering by
+ * `lastUpdate` cannot tell them apart, so the gate has to order by block or it hires an agent that has
+ * already been re-graded.
+ */
+function twoRecordRegistry(): { client: never; bundle: EvidenceBundle } {
+  const bundle = bundleFor('baseline')
+  const responseHash = hashCanonical(canonicalize(bundle))
+  const older = '0xaaa1' as const
+  const newer = '0xaaa2' as const
+  const entries = [
+    { requestHash: older, block: 100n, logIndex: 0, score: 100 },
+    { requestHash: newer, block: 200n, logIndex: 0, score: 0 },
+  ]
+  const client = {
+    getBlockNumber: async () => 1_000n,
+    getLogs: async ({ fromBlock, toBlock }: { fromBlock: bigint; toBlock: bigint }) =>
+      entries
+        .filter((entry) => entry.block >= fromBlock && entry.block <= toBlock)
+        .map((entry) => ({
+          args: {
+            requestHash: entry.requestHash,
+            responseURI: 'https://evidence.invalid/42.json',
+            responseHash,
+            response: entry.score,
+            tag: METHODOLOGY_VERSION,
+            validatorAddress: VALIDATOR,
+          },
+          blockNumber: entry.block,
+          logIndex: entry.logIndex,
+          transactionHash: `0xtx${entry.logIndex}`,
+        })),
+    readContract: async ({ functionName, args }: { functionName: string; args: readonly unknown[] }) => {
+      if (functionName === 'getAgentValidations') return entries.map((entry) => entry.requestHash)
+      if (functionName === 'getValidationStatus') {
+        const entry = entries.find((candidate) => candidate.requestHash === String(args[0]))
+        if (entry === undefined) throw new Error('execution reverted: unknown')
+        // Both records carry the same lastUpdate, which is the trap.
+        return [VALIDATOR, 42n, entry.score, responseHash, METHODOLOGY_VERSION, BigInt(NOW - 60)]
+      }
+      throw new Error(`unexpected call ${functionName}`)
+    },
+  }
+  return { client: client as never, bundle }
+}
+
+test('a re-graded agent is judged on the newer record, selected by block', async () => {
+  const { client, bundle } = twoRecordRegistry()
+  const decision = await vetAgent(
+    '42',
+    DEFAULT_POLICY,
+    {
+      now: NOW,
+      validator: VALIDATOR,
+      read: { client, registry: '0x1111111111111111111111111111111111111111', chainId: 84532 },
+      fetchEvidence: async () => canonicalize(bundle),
+      resolveEndpoints: async () => [ENDPOINT],
+      fingerprintEndpoint: async () => fingerprintToolDefs(toolDefs('baseline')).fingerprint,
+    },
+  )
+
+  assert.equal(decision.verdict, 'REFUSE', 'the F record superseded the A record')
+  assert.equal(decision.grade, 'F')
+  assert.match(decision.reason, /below the minimum of B/)
+  assert.equal(
+    decision.fingerprintMatch,
+    true,
+    'the surface still matched, so this refusal is about the letter and not about drift',
+  )
+})
