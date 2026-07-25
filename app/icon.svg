@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <!-- Favicon form of the Preflight mark (app/components/mark.tsx). Colours from app/lib/tokens.ts. -->
+  <rect width="32" height="32" rx="6" fill="#f2f3ee"/>
+  <g transform="translate(2.4 8.8) scale(0.45)" fill="none" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M2 16H8L11 8l3 8" stroke="#0e5f56" stroke-width="3.2"/>
+    <path d="M14 16h10l5-12 6 24 6-18 5 6h12" stroke="#101613" stroke-width="3.2"/>
+  </g>
+</svg>
