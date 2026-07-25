@@ -189,9 +189,21 @@ export interface FetchEvidenceOptions {
 export const EVIDENCE_FETCH_ATTEMPTS = 3
 export const EVIDENCE_RETRY_BASE_MS = 300
 
-/** 5xx is the server saying it failed; 600 is the 0G gateway saying the same thing off the RFC scale. */
+/**
+ * Which statuses are worth asking about twice.
+ *
+ * 5xx is the server saying it failed, and 600 is this gateway saying the same thing off the RFC
+ * scale. 404 is on the list for a reason that took a production run to see: with three watch streams
+ * open at once on 2026-07-25, the 0G gateway answered 404 for an evidence document that returned 200
+ * seconds before and seconds after, in the same stream. Evidence is content addressed, so it does not
+ * leave and come back; that 404 was the gateway failing to serve a file it holds.
+ *
+ * A document that is genuinely gone still refuses, one bounded round later, so this trades a second
+ * against a hire that should have happened. A 403 is an answer about access rather than a stumble,
+ * and is taken as one.
+ */
 function statusCanChange(status: number): boolean {
-  return status >= 500 || status === 408 || status === 429
+  return status >= 500 || status === 404 || status === 408 || status === 429
 }
 
 async function readPublished(uri: string, options: FetchEvidenceOptions): Promise<string> {
@@ -213,14 +225,25 @@ async function readPublished(uri: string, options: FetchEvidenceOptions): Promis
 
   let lastStatus = 0
   for (let attempt = 0; attempt < EVIDENCE_FETCH_ATTEMPTS; attempt += 1) {
-    const response = await transport(trimmed, {
-      signal: AbortSignal.timeout(options.timeoutMs ?? 15_000),
-    })
+    const isLast = attempt === EVIDENCE_FETCH_ATTEMPTS - 1
+    let response: Awaited<ReturnType<typeof transport>>
+    try {
+      response = await transport(trimmed, {
+        signal: AbortSignal.timeout(options.timeoutMs ?? 15_000),
+      })
+    } catch (err) {
+      // A socket that hung up is the same kind of event as a 600, and under the concurrency this
+      // gateway sees it is the likelier one. The last attempt rethrows, so a real outage still ends
+      // the read rather than being retried out of existence.
+      if (isLast) throw err
+      await new Promise((resolve) => setTimeout(resolve, backoff * 2 ** attempt))
+      continue
+    }
     if (response.ok) return response.text()
 
     lastStatus = response.status
     if (!statusCanChange(response.status)) break
-    if (attempt < EVIDENCE_FETCH_ATTEMPTS - 1) {
+    if (!isLast) {
       await new Promise((resolve) => setTimeout(resolve, backoff * 2 ** attempt))
     }
   }
