@@ -709,6 +709,18 @@ export async function publishValidation(
     args: readonly unknown[],
   ): Promise<Hash> => {
     try {
+      // Estimate, then add a quarter. viem sends the raw estimate, and this endpoint's estimate is
+      // marginally optimistic: a validationResponse that actually costs 133,926 gas was estimated at
+      // 133,334 and reverted twice for want of 600 gas. A revert that late has already written the
+      // storage, so it costs the same as success and lands nothing, which is the worst of both.
+      // Overestimating costs nothing, since unused gas is not charged.
+      const estimate = await publicClient.estimateContractGas({
+        address: call.registry,
+        abi: VALIDATION_REGISTRY_ABI,
+        functionName,
+        args: args as never,
+        account,
+      })
       const hash = await wallet.writeContract({
         address: call.registry,
         abi: VALIDATION_REGISTRY_ABI,
@@ -716,6 +728,7 @@ export async function publishValidation(
         args: args as never,
         account,
         chain: null,
+        gas: (estimate * 125n) / 100n,
       })
       const receipt = await publicClient.waitForTransactionReceipt({ hash })
       if (receipt.status !== 'success') {

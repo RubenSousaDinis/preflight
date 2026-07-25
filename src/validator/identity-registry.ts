@@ -60,14 +60,31 @@ export function buildAgentCard(input: {
  */
 export const DEFAULT_IDENTITY_CHAIN_ID: ChainId = 8453
 
+/**
+ * Which chain the identity is read from.
+ *
+ * `IDENTITY_REGISTRY_CHAIN_ID` wins. Otherwise it follows the chain the Validation Registry is on,
+ * because the two are not independent: a validation request is authorized against `ownerOf(agentId)` in
+ * the IdentityRegistry the ValidationRegistry was initialized with, so an agent registered on one chain
+ * and attested on another cannot be published at all. A fixed mainnet fallback is what produced
+ * "agent 8427 is registered with an empty tokenURI" while its record sat on Sepolia: a confusing failure
+ * a long way from its cause.
+ */
 export function identityChainId(): ChainId {
   const configured = process.env.IDENTITY_REGISTRY_CHAIN_ID?.trim()
-  if (configured === undefined || configured.length === 0) return DEFAULT_IDENTITY_CHAIN_ID
-  const parsed = Number(configured)
-  if (!Number.isInteger(parsed)) {
-    throw new ConfigError('IDENTITY_REGISTRY_CHAIN_ID is not an integer chain id')
+  if (configured !== undefined && configured.length > 0) {
+    const parsed = Number(configured)
+    if (!Number.isInteger(parsed)) {
+      throw new ConfigError('IDENTITY_REGISTRY_CHAIN_ID is not an integer chain id')
+    }
+    return parsed
   }
-  return parsed
+  const validationChain = process.env.VALIDATION_REGISTRY_CHAIN_ID?.trim()
+  if (validationChain !== undefined && validationChain.length > 0) {
+    const parsed = Number(validationChain)
+    if (Number.isInteger(parsed)) return parsed
+  }
+  return DEFAULT_IDENTITY_CHAIN_ID
 }
 
 export function publicClientFor(chainId: ChainId): PublicClient {
