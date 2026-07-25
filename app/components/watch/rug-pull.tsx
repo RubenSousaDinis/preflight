@@ -1,6 +1,9 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { ensAppUrl } from "../../lib/ens-app-url";
+import { filterAgentCatalog } from "../../lib/filter-agent-catalog";
+import type { KnownAgentCatalogEntry } from "../../lib/known-agents";
 import type {
   ClientVerdict,
   WatchFrame,
@@ -100,13 +103,29 @@ function ClientCard({ client }: { client: ClientVerdict }) {
   );
 }
 
-export function RugPull({ defaultAgentId }: { defaultAgentId: string }) {
+export function RugPull({
+  catalog,
+  defaultAgentId,
+}: {
+  catalog: readonly KnownAgentCatalogEntry[];
+  defaultAgentId: string;
+}) {
+  const defaultEntry =
+    catalog.find((agent) => agent.id === defaultAgentId) ?? catalog[0] ?? null;
   const [observations, setObservations] = useState<WatchObservation[]>([]);
   const [clients, setClients] = useState<ClientVerdict[] | null>(null);
   const [watching, setWatching] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const agentRef = useRef<HTMLInputElement>(null);
+  const [query, setQuery] = useState(defaultEntry?.id ?? defaultAgentId);
+  const [selected, setSelected] = useState<KnownAgentCatalogEntry | null>(
+    defaultEntry,
+  );
   const abortRef = useRef<AbortController | null>(null);
+
+  const visible = useMemo(
+    () => filterAgentCatalog(catalog, query),
+    [catalog, query],
+  );
 
   const stop = useCallback(() => {
     abortRef.current?.abort();
@@ -115,7 +134,13 @@ export function RugPull({ defaultAgentId }: { defaultAgentId: string }) {
   }, []);
 
   const start = useCallback(async () => {
-    const agentId = agentRef.current?.value.trim() ?? "";
+    const agentId = (selected?.id ?? query).trim();
+    const chainId = selected?.identityChainId;
+    if (agentId.length === 0) {
+      setNotice("Pick an agent from the list, or paste a registry id.");
+      return;
+    }
+
     const controller = new AbortController();
     abortRef.current = controller;
 
@@ -128,7 +153,10 @@ export function RugPull({ defaultAgentId }: { defaultAgentId: string }) {
       const response = await fetch("/api/watch", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ agentId }),
+        body: JSON.stringify({
+          agentId,
+          ...(chainId !== undefined ? { chainId } : {}),
+        }),
         signal: controller.signal,
       });
 
@@ -175,27 +203,110 @@ export function RugPull({ defaultAgentId }: { defaultAgentId: string }) {
         );
       }
     } finally {
+      if (abortRef.current === controller) abortRef.current = null;
       setWatching(false);
     }
-  }, []);
+  }, [query, selected]);
 
   const flipped = observations.some((observation) => observation.changed);
 
+  function pickAgent(agent: KnownAgentCatalogEntry) {
+    setSelected(agent);
+    setQuery(agent.id);
+  }
+
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-end gap-3">
-        <label className="min-w-0 flex-1">
+      <div className="mb-5 max-w-[860px]">
+        <label className="block">
           <span className="block font-data text-[0.64rem] uppercase tracking-[0.16em] text-ink/50">
             agent to watch
           </span>
           <input
-            ref={agentRef}
-            defaultValue={defaultAgentId}
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setSelected(null);
+            }}
+            disabled={watching}
             autoComplete="off"
             spellCheck={false}
-            className="mt-1 w-full border border-rule bg-paper px-3 py-2 font-data text-[0.85rem] text-ink outline-none focus:border-accent"
+            placeholder="registry id, label, or ENS name"
+            className="mt-1 w-full border border-rule bg-paper px-3 py-2 font-data text-[0.85rem] text-ink outline-none focus:border-accent disabled:opacity-50"
           />
         </label>
+
+        {catalog.length === 0 ? (
+          <p className="mt-2 font-data text-[0.8rem] text-ink/55">
+            No known agents are configured for this booth.
+          </p>
+        ) : visible.length === 0 ? (
+          <p className="mt-2 font-data text-[0.8rem] text-ink/55">
+            No agents match {JSON.stringify(query.trim())}.
+          </p>
+        ) : (
+          <ul className="mt-2 max-h-[16rem] divide-y divide-rule overflow-y-auto border border-rule">
+            {visible.map((agent) => {
+              const active =
+                selected?.id === agent.id &&
+                selected.identityChainId === agent.identityChainId;
+              return (
+                <li
+                  key={`${agent.identityChainId}:${agent.id}`}
+                  className="flex items-stretch"
+                >
+                  <div className="min-w-0 flex-1 px-3 py-2.5">
+                    <p className="font-data text-[0.85rem] text-ink">
+                      {agent.id}
+                      <span className="text-ink/45"> · {agent.label}</span>
+                    </p>
+                    <p className="mt-0.5 font-data text-[0.68rem] text-ink/45">
+                      {agent.identityChainId === 8453
+                        ? "Base mainnet · 8004scan"
+                        : "Base Sepolia · demo"}
+                    </p>
+                    {agent.ensName !== null ? (
+                      <a
+                        href={ensAppUrl(agent.ensName)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-0.5 block font-data text-[0.72rem] break-all text-accent underline-offset-2 hover:underline"
+                      >
+                        {agent.ensName}
+                      </a>
+                    ) : null}
+                    <p className="mt-0.5 font-data text-[0.68rem] text-ink/45">
+                      {agent.note}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={watching}
+                    onClick={() => pickAgent(agent)}
+                    className={`shrink-0 border-l border-rule px-3 font-data text-[0.72rem] tracking-[0.08em] transition-colors disabled:opacity-50 ${
+                      active
+                        ? "bg-band/80 text-accent"
+                        : "text-accent hover:bg-band/60"
+                    }`}
+                  >
+                    {active ? "selected" : "select"}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        <p className="mt-2 font-data text-[0.68rem] text-ink/45">
+          {visible.length} of {catalog.length} agents
+          {selected !== null
+            ? ` · watching candidate ${selected.id}`
+            : query.trim().length > 0
+              ? ` · free-text id ${query.trim()}`
+              : ""}
+        </p>
+      </div>
+
+      <div className="mb-4 flex flex-wrap items-end gap-3">
         <button
           type="button"
           onClick={watching ? stop : start}

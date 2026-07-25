@@ -92,8 +92,10 @@ export default async function ConsolePage({
           readEnsMirror(boardSubjects(agents)[0] ?? ""),
         ])
       : null;
-  const gradeCatalog =
-    view === "grade" ? await discoverAgentsForGrade() : null;
+  const agentCatalog =
+    view === "grade" || view === "rugpull"
+      ? await discoverAgentsForGrade()
+      : null;
 
   return (
     <div className="flex min-h-svh flex-col">
@@ -177,7 +179,7 @@ export default async function ConsolePage({
                 lede="Search Sepolia demos or Base mainnet 8004scan leaders by id. Grade runs against the agent's IdentityRegistry card; ENS claim on Sepolia is optional."
               />
               <div className="grid gap-8 md:grid-cols-[minmax(0,1fr)_15rem] md:items-start">
-                <SubmitForm catalog={await discoverAgentsForGrade()} />
+                <SubmitForm catalog={agentCatalog ?? []} />
                 <SubmitQr />
               </div>
               <p className="mt-6 max-w-[46rem] font-data text-[11.5px] leading-[1.8] text-meta">
@@ -195,7 +197,10 @@ export default async function ConsolePage({
                 meta="A5 WATCHER / LIVE"
                 lede="A graded agent ships an update. The watcher notices the tool surface move, and the client drops it without being told. Flip the demo target to drifted while this is running to see it happen."
               />
-              <RugPull defaultAgentId={boardSubjects(agents)[0] ?? ""} />
+              <RugPull
+                catalog={agentCatalog ?? []}
+                defaultAgentId={boardSubjects(agents)[0] ?? ""}
+              />
             </>
           ) : null}
 
