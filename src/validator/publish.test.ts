@@ -644,8 +644,63 @@ test('a gateway that keeps failing is a refusal, not a wait forever', async () =
   assert.ok(gateway.calls() > 1 && gateway.calls() <= 5, `bounded attempts, made ${gateway.calls()}`)
 })
 
+/*
+  Seen once in production on 2026-07-25, with three watch streams open at the same time: this
+  gateway answered 404 for an evidence document that returned 200 seconds earlier and seconds later
+  in the same stream. Evidence is content addressed, so it does not leave and come back; that 404
+  was the gateway failing to serve a file it holds. Asking again costs a second, and refusing on the
+  first one costs a hire that should have happened. A document that is genuinely gone still refuses,
+  one bounded round later.
+*/
+test('a 404 from a gateway that has served the file before is asked again', async () => {
+  const bundle = JSON.stringify({ schema: 'preflight-evidence-v1' })
+  const gateway = respondingWith([404, 200], bundle)
+
+  const text = await fetchPublishedEvidence('https://evidence.example/bundle', {
+    fetchImpl: gateway.impl,
+    retryDelayMs: 0,
+    timeoutMs: 1_000,
+  })
+  assert.equal(text, bundle)
+  assert.equal(gateway.calls(), 2)
+})
+
+test('a transport failure is asked again rather than ending the read', async () => {
+  const bundle = JSON.stringify({ schema: 'preflight-evidence-v1' })
+  let calls = 0
+  const flaky = (async () => {
+    calls += 1
+    if (calls === 1) throw new Error('fetch failed: socket hang up')
+    return { ok: true, status: 200, text: async () => bundle }
+  }) as unknown as typeof fetch
+
+  const text = await fetchPublishedEvidence('https://evidence.example/bundle', {
+    fetchImpl: flaky,
+    retryDelayMs: 0,
+    timeoutMs: 1_000,
+  })
+  assert.equal(text, bundle)
+  assert.equal(calls, 2)
+})
+
+test('a transport failure that does not clear is reported, not swallowed', async () => {
+  const down = (async () => {
+    throw new Error('fetch failed: socket hang up')
+  }) as unknown as typeof fetch
+
+  await assert.rejects(
+    () =>
+      fetchPublishedEvidence('https://evidence.example/bundle', {
+        fetchImpl: down,
+        retryDelayMs: 0,
+        timeoutMs: 1_000,
+      }),
+    /socket hang up/,
+  )
+})
+
 test('a status that will not change is not retried', async () => {
-  const gateway = respondingWith([404], 'no')
+  const gateway = respondingWith([403], 'no')
 
   await assert.rejects(
     () =>
@@ -660,5 +715,5 @@ test('a status that will not change is not retried', async () => {
       return true
     },
   )
-  assert.equal(gateway.calls(), 1, 'a 404 is an answer, so it is not asked again')
+  assert.equal(gateway.calls(), 1, 'a 403 is an answer about access, so it is not asked again')
 })
