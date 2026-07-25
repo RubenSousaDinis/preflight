@@ -1,6 +1,7 @@
 "use client";
 
 import { startTransition, useActionState, useMemo, useRef, useState } from "react";
+import { baseSepoliaTxUrl, ensAppUrl } from "../../lib/ens-app-url";
 import { filterAgentCatalog } from "../../lib/filter-agent-catalog";
 import type { KnownAgentCatalogEntry } from "../../lib/known-agents";
 import {
@@ -91,37 +92,40 @@ export function SubmitForm({
                 key={`${agent.identityChainId}:${agent.id}`}
                 className="flex items-stretch"
               >
+                <div className="min-w-0 flex-1 px-3 py-2.5">
+                  <p className="font-data text-[0.85rem] text-ink">
+                    {agent.id}
+                    <span className="text-ink/45"> · {agent.label}</span>
+                  </p>
+                  <p className="mt-0.5 font-data text-[0.68rem] text-ink/45">
+                    {agent.identityChainId === 8453
+                      ? "Base mainnet · 8004scan"
+                      : "Base Sepolia · demo"}
+                    {agent.sepoliaId !== null
+                      ? ` · Sepolia mirror ${agent.sepoliaId}`
+                      : ""}
+                  </p>
+                  {agent.ensName !== null ? (
+                    <a
+                      href={ensAppUrl(agent.ensName)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-0.5 block font-data text-[0.72rem] break-all text-accent underline-offset-2 hover:underline"
+                    >
+                      {agent.ensName}
+                    </a>
+                  ) : null}
+                  <p className="mt-0.5 font-data text-[0.68rem] text-ink/45">
+                    {agent.note}
+                  </p>
+                </div>
                 <button
                   type="button"
                   disabled={isPending || claimPending}
                   onClick={() => gradeKnown(agent)}
-                  className="flex min-w-0 flex-1 items-baseline gap-3 px-3 py-2.5 text-left transition-colors hover:bg-band/60 disabled:opacity-50"
+                  className="shrink-0 border-l border-rule px-3 font-data text-[0.72rem] tracking-[0.08em] text-accent transition-colors hover:bg-band/60 disabled:opacity-50"
                 >
-                  <span className="min-w-0 flex-1">
-                    <span className="block font-data text-[0.85rem] text-ink">
-                      {agent.id}
-                      <span className="text-ink/45"> · {agent.label}</span>
-                    </span>
-                    <span className="mt-0.5 block font-data text-[0.68rem] text-ink/45">
-                      {agent.identityChainId === 8453
-                        ? "Base mainnet · 8004scan"
-                        : "Base Sepolia · demo"}
-                      {agent.sepoliaId !== null
-                        ? ` · Sepolia mirror ${agent.sepoliaId}`
-                        : ""}
-                    </span>
-                    {agent.ensName !== null ? (
-                      <span className="mt-0.5 block font-data text-[0.72rem] break-all text-ink/55">
-                        {agent.ensName}
-                      </span>
-                    ) : null}
-                    <span className="mt-0.5 block font-data text-[0.68rem] text-ink/45">
-                      {agent.note}
-                    </span>
-                  </span>
-                  <span className="shrink-0 font-data text-[0.72rem] tracking-[0.08em] text-accent">
-                    grade
-                  </span>
+                  grade
                 </button>
                 <button
                   type="button"
@@ -280,19 +284,47 @@ export function SubmitForm({
         {!claimPending && claimResult?.kind === "claimed" ? (
           <div className="mt-3 border border-rule bg-band/50 px-4 py-3">
             <p className="font-data text-[0.74rem] break-all text-ink/55">
-              {claimResult.name}
+              <a
+                href={ensAppUrl(claimResult.name)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-accent underline-offset-2 hover:underline"
+              >
+                {claimResult.name}
+              </a>
             </p>
             <p className="mt-1 text-[0.95rem] text-ink/80">
               Owned by {claimResult.owner}
               {claimResult.mainnetId !== null
                 ? ` · mainnet ${claimResult.mainnetId} → Sepolia ${claimResult.sepoliaId}`
                 : ""}
-              {claimResult.txHash === null
-                ? " · already claimed"
-                : ` · tx ${claimResult.txHash}`}
+              {claimResult.txHash === null ? (
+                " · already claimed"
+              ) : (
+                <>
+                  {" · "}
+                  <a
+                    href={baseSepoliaTxUrl(claimResult.txHash)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="break-all text-accent underline-offset-2 hover:underline"
+                  >
+                    tx {claimResult.txHash}
+                  </a>
+                </>
+              )}
             </p>
             <p className="mt-2 font-data text-[0.72rem] leading-snug text-ink/50">
-              {claimResult.trustNote}
+              {claimResult.trustNote}{" "}
+              <a
+                href={ensAppUrl(claimResult.name)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-accent underline-offset-2 hover:underline"
+              >
+                Open in ENS App (Base Sepolia)
+              </a>{" "}
+              to read the text records.
             </p>
           </div>
         ) : null}
