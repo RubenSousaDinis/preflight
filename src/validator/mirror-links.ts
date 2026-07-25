@@ -1,6 +1,9 @@
 /**
  * Durable mainnet → Sepolia identity links for 8004scan mirror registrations.
  *
+ * Uses node:fs. Keep this module off the client bundle (import only from server
+ * code / dynamic imports inside server actions).
+ *
  * Read order: in-memory overlay → MAINNET_SEPOLIA_LINKS env JSON →
  * data/mainnet-sepolia-links.json under process.cwd(). Writes update memory and
  * the JSON file when the filesystem allows (CLI / local).

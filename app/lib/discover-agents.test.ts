@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { filterAgentCatalog } from "./discover-agents";
+import { filterAgentCatalog } from "./filter-agent-catalog";
 import type { KnownAgentCatalogEntry } from "./known-agents";
 import { CURATED_BASE_LEADERS } from "./curated-base-leaders";
 

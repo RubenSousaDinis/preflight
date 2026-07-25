@@ -8,15 +8,13 @@ import {
 } from "@/src/validator/ens/client";
 import { ensConfig } from "@/src/shared/config";
 import type { ChainId, Grade } from "@/src/shared";
-import {
-  ensureSepoliaMirror,
-  MAINNET_CHAIN_ID,
-  SEPOLIA_CHAIN_ID,
-} from "@/src/validator/sepolia-mirror";
-import { sepoliaIdForMainnet } from "@/src/validator/mirror-links";
 import { identityChainId } from "@/src/validator/identity-registry";
 import { toRenderableError, type RenderableError } from "./errors";
 import { KNOWN_AGENT_IDS } from "./known-agents";
+
+/** Keep chain ids local so this server-actions module does not pull node:fs into the client graph. */
+const MAINNET_CHAIN_ID = 8453 as ChainId;
+const SEPOLIA_CHAIN_ID = 84532 as ChainId;
 
 export type SubmitResult =
   | { kind: "invalid"; message: string }
@@ -62,7 +60,6 @@ function parseChainId(raw: string): ChainId | null {
 
 function defaultChainForId(agentId: string): ChainId {
   if (KNOWN_AGENT_IDS.includes(agentId)) return SEPOLIA_CHAIN_ID;
-  // Booth default for unknown numeric ids: mainnet leaders (demos are in the known set).
   return MAINNET_CHAIN_ID;
 }
 
@@ -111,6 +108,13 @@ export async function submitAgent(
       (AGENT_ID.test(ref) ? defaultChainForId(agentId) : identityChainId());
     const card = await resolveAgent(agentId, { chainId: chain });
     const result = await gradeAgent(card);
+    let sepoliaId: string | null = null;
+    if (chain === MAINNET_CHAIN_ID) {
+      const { sepoliaIdForMainnet } = await import(
+        "@/src/validator/mirror-links"
+      );
+      sepoliaId = sepoliaIdForMainnet(agentId);
+    }
     return {
       kind: "graded",
       ref,
@@ -121,8 +125,7 @@ export async function submitAgent(
       methodologyVersion: result.methodologyVersion,
       endpointsGraded: result.bundle.coverage.endpointsGraded,
       finding: result.bundle.coverage.note,
-      sepoliaId:
-        chain === MAINNET_CHAIN_ID ? sepoliaIdForMainnet(agentId) : null,
+      sepoliaId,
     };
   } catch (thrown) {
     return { kind: "error", ref, error: toRenderableError(thrown) };
@@ -156,6 +159,9 @@ export async function claimAgent(
 
   try {
     if (chain === MAINNET_CHAIN_ID) {
+      const { ensureSepoliaMirror } = await import(
+        "@/src/validator/sepolia-mirror"
+      );
       const mirror = await ensureSepoliaMirror(raw);
       const result = await claimSubname(mirror.sepoliaId, {
         agentOwner: mirror.mainnetOwner,
