@@ -311,3 +311,76 @@ what a reader should say about them.
 - D1's cards must declare their MCP endpoint as a `services` entry whose name reads as MCP, for
   example `{ "name": "MCP", "endpoint": "https://<E1 URL>/mcp" }`. Nothing in ids 1 to 70 of the live
   registry does this, so it will not happen by accident.
+
+## A3b, published for real, 2026-07-25
+
+Run by Lane 1 at the operator's direction, with the validator key from the shared environment.
+
+```
+ValidationRegistry used:       0xc0274d5a902C1D03c7F428f0722127868B187393, chain 84532 (A4's deploy)
+validator sending address:     0xCFad8f21B8469790ADc3922814d1df4E08ECF1c8, 0.0499 ETH on Base Sepolia
+subject agent:                 8427, already registered on Sepolia and owned by the validator, so leg 1
+                               was authorized by the same key
+card written first:            setAgentURI(8427, <inline registration-v1 card>) in
+                               0xdd4714e0585f5281636d977b1bc7ef1d2c89ad7f804f53da85f92f1ee1137a6d
+                               endpoint https://mcp.deepwiki.com/mcp, resolved back as preflight-demo-a
+pinning path used:             0G Storage, 19757 bytes
+                               root 0x75564b197abec87ec1c28a9e3485118be4f26f691e05ed86f70364aee565b0c2
+
+known-B (the hire row):        grade B, score 75, tag litmus-v17
+  responseURI                  https://indexer-storage-testnet-turbo.0g.ai/file?root=0x75564b19…b0c2
+  responseHash                 0x643ec3ec396198f7000e4b279bbfb1b4c9f4a4ddef7e91fe2161d8a7c1ff9bf7
+  requestHash                  0x6b94b95cf28f1a82b1749b6a4eccd4f4aaf477cf572709ea4f4379e416ba9433
+  response tx                  0x79538c5c47faccdbc89af28223aca52552dc8a6e1fd33b8e27bfa9ea1ba6151b
+expirationTime / expiresAt:    no onchain expiry exists in this contract, so expiresAt is derived:
+                               lastUpdate 1784941502 + 86400 = 1785027902, in the future
+tag read back onchain:         litmus-v17, equal to the methodologyVersion A3a logged
+independent re-derivation:     MATCHES. Fetched the 0G URL over HTTP, reparsed, re-canonicalized,
+                               re-hashed to 0x643ec3ec…9bf7, the same value the record carries.
+readValidation with a
+foreign validator:             null, "no usable record from this validator"
+```
+
+### Two failures it cost transactions to find
+
+**The gas estimate on this endpoint is optimistic.** `validationResponse` actually costs 133,926 gas and
+was estimated at 133,334, so it reverted twice for want of six hundred gas. viem sends the raw estimate
+with no buffer. Worse, that revert happens *after* the storage writes, so it costs as much as success and
+lands nothing. The write path now estimates and adds a quarter.
+
+**A mined receipt is not a visible state.** Leg 2 can be built against a node that has not yet seen leg
+1's block, so the write path polls for the request it just made before answering it.
+
+Both failures left an orphaned request on chain (`0xec234c74…`, and the first attempt's) with a response
+of zero and a zero responseHash. That is exactly the case the reader already handles: a request with no
+response is not a record, so those are ignored rather than read as a grade of F.
+
+### The reader on real data, with two records
+
+`current 8427` now shows supersession working on chain rather than in a test:
+
+```
+selected: block 44586607, log 125, score 75
+history:  2 record(s), oldest first
+  block 44581900 log 93   score 100  0xf494d18267bb9579…  (A4's smoke record)
+  block 44586607 log 125  score 75   0x6b94b95cf28f1a82…  (this publish)
+```
+
+Ordering by wall clock would have been free to pick the score-100 smoke record. Ordering by block picks
+the one that superseded it, and both stay readable.
+
+## B1 check 1 and B7 equivalence, unstubbed
+
+```
+vet 8427            HIRE, grade B, score 75, fingerprintMatch true
+                    "grade B meets the minimum of B, the evidence hashes to the record, and the live
+                     tool surface matches the surface that was graded"
+preflight_agent
+through the stock
+MCP client          the same HIRE, the same reason, the same record, isError false
+```
+
+One interoperability fix fell out of that last check: the MCP Inspector coerces `ref=8427` to a JSON
+number, and the handler required a string, so it refused. Refusing was correct but needlessly brittle, so
+an integer id is now accepted and normalized, since it carries the same value losslessly. A non-integer
+still refuses.
