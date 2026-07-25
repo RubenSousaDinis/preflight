@@ -93,8 +93,10 @@ export default async function ConsolePage({
           readEnsMirror(boardSubjects(agents)[0] ?? ""),
         ])
       : null;
-  const gradeCatalog =
-    view === "grade" ? await discoverAgentsForGrade() : null;
+  const agentCatalog =
+    view === "grade" || view === "rugpull"
+      ? await discoverAgentsForGrade()
+      : null;
 
   return (
     <div className="flex min-h-svh flex-col">
@@ -169,7 +171,7 @@ export default async function ConsolePage({
             </>
           ) : null}
 
-          {view === "grade" && gradeCatalog ? (
+          {view === "grade" && agentCatalog ? (
             <div className="max-w-[860px]">
               <Head
                 title="Grade an agent"
@@ -177,7 +179,7 @@ export default async function ConsolePage({
               />
               <div className="grid gap-8 md:grid-cols-[minmax(0,1fr)_15rem] md:items-start">
                 <SubmitForm
-                  catalog={gradeCatalog}
+                  catalog={agentCatalog}
                   allowMainnetClaim={
                     process.env.PREFLIGHT_ALLOW_MAINNET_CLAIM === "1"
                   }
@@ -200,6 +202,7 @@ export default async function ConsolePage({
                 lede="A graded agent ships an update. The watcher notices the tool surface move, and the client drops it without being told. Flip the demo target to drifted while this is running to see it happen."
               />
               <RugPull
+                catalog={agentCatalog ?? []}
                 defaultAgentId={
                   agents !== undefined
                     ? (boardSubjects(agents)[0] ?? "")

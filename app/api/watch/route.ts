@@ -43,11 +43,16 @@ function clientNames(): string[] {
   return Array.from({ length: count }, (_unused, index) => `client-${index + 1}`);
 }
 
-async function clientVerdicts(agentId: string): Promise<ClientVerdict[]> {
+async function clientVerdicts(
+  agentId: string,
+  chainId?: number,
+): Promise<ClientVerdict[]> {
   const results = await Promise.all(
     clientNames().map(async (client): Promise<ClientVerdict> => {
       try {
-        const decision = await vetAgent(agentId);
+        const decision = await vetAgent(agentId, undefined, {
+          resolve: chainId !== undefined ? { chainId } : undefined,
+        });
         return {
           client,
           verdict: decision.verdict,
@@ -76,9 +81,19 @@ async function clientVerdicts(agentId: string): Promise<ClientVerdict[]> {
 
 export async function POST(request: Request) {
   let agentId = "";
+  let chainId: number | undefined;
   try {
-    const body = (await request.json()) as { agentId?: unknown };
+    const body = (await request.json()) as {
+      agentId?: unknown;
+      chainId?: unknown;
+    };
     if (typeof body.agentId === "string") agentId = body.agentId.trim();
+    if (
+      typeof body.chainId === "number" &&
+      (body.chainId === 8453 || body.chainId === 84532)
+    ) {
+      chainId = body.chainId;
+    }
   } catch {
     // No body is no agent, which the guard below refuses.
   }
@@ -94,7 +109,9 @@ export async function POST(request: Request) {
     );
   }
 
-  const watcher = new AgentWatcher(agentId);
+  const watcher = new AgentWatcher(agentId, {
+    resolve: chainId !== undefined ? { chainId } : undefined,
+  });
   const startedAt = Date.now();
 
   const stream = new ReadableStream<Uint8Array>({
@@ -113,7 +130,7 @@ export async function POST(request: Request) {
           send({
             kind: "clients",
             at: observation.at,
-            clients: await clientVerdicts(agentId),
+            clients: await clientVerdicts(agentId, chainId),
           });
 
           await new Promise((resolve) => setTimeout(resolve, POLL_MS));
