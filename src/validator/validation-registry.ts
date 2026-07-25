@@ -444,6 +444,106 @@ export async function readResponseEvent(
   return null
 }
 
+export interface ResponseHistoryEntry {
+  requestHash: Hex
+  responseURI: string
+  txHash: Hex
+  block: bigint
+  logIndex: number
+  score: number
+  tag: string
+  responseHash: Hex
+  validator: Address
+}
+
+/**
+ * Every response this validator has written about this agent, ordered oldest to newest **by block**.
+ *
+ * A5 needs this and `lastUpdate` cannot give it: two transactions can carry the same consensus second,
+ * and a wall clock is not a total order, so ordering by timestamp picks the wrong record roughly half
+ * the time it matters. `(blockNumber, logIndex)` is a total order, and it comes from the log rather than
+ * from storage because storage keeps only the current state per request hash.
+ *
+ * Supersession therefore happens in the reader. Both records stay readable, which is the point: editing
+ * history would remove the evidence that a grade ever flipped.
+ */
+export async function readResponseHistory(
+  agentId: AgentId,
+  validator?: Address,
+  options: ReadOptions & { lookbackBlocks?: bigint } = {},
+): Promise<ResponseHistoryEntry[]> {
+  const registryConfig = options.registry === undefined ? validationRegistry() : null
+  const registry = getAddress(options.registry ?? registryConfig!.address)
+  const chainId = options.chainId ?? registryConfig!.chainId
+  const expected = getAddress(validator ?? validatorAddress())
+  const client = publicClientFor(chainId, options.client)
+  const tokenId = toTokenId(agentId)
+
+  let head: bigint
+  try {
+    head = await client.getBlockNumber()
+  } catch (err) {
+    throw new ValidationReadError(`could not read the head block on chain ${chainId}`, {
+      retryable: true,
+      cause: err,
+    })
+  }
+
+  const configuredFloor = optionalEnv(ENV.validationRegistryDeployBlock)
+  const lookback = options.lookbackBlocks ?? DEFAULT_LOG_LOOKBACK_BLOCKS
+  const floor =
+    configuredFloor === undefined ? (head > lookback ? head - lookback : 0n) : BigInt(configuredFloor)
+
+  const entries: ResponseHistoryEntry[] = []
+  let toBlock = head
+  while (toBlock >= floor) {
+    const fromBlock = toBlock > floor + LOG_CHUNK_BLOCKS ? toBlock - LOG_CHUNK_BLOCKS : floor
+    try {
+      const logs = await client.getLogs({
+        address: registry,
+        event: VALIDATION_RESPONSE_EVENT,
+        // Both filters are indexed on the event, so the node does the work rather than the reader.
+        args: { validatorAddress: expected, agentId: tokenId },
+        fromBlock,
+        toBlock,
+      })
+      for (const log of logs) {
+        const args = log.args as {
+          requestHash?: Hex
+          responseURI?: string
+          responseHash?: Hex
+          response?: number
+          tag?: string
+          validatorAddress?: Address
+        }
+        if (args.requestHash === undefined) continue
+        entries.push({
+          requestHash: args.requestHash,
+          responseURI: args.responseURI ?? '',
+          txHash: log.transactionHash as Hex,
+          block: log.blockNumber ?? 0n,
+          logIndex: log.logIndex ?? 0,
+          score: args.response ?? 0,
+          tag: args.tag ?? '',
+          responseHash: args.responseHash ?? (ZERO_HASH as Hex),
+          validator: getAddress(args.validatorAddress ?? expected),
+        })
+      }
+    } catch (err) {
+      throw new ValidationReadError(
+        `could not read the response history for agent ${agentId} between blocks ${fromBlock} and ${toBlock}`,
+        { retryable: true, cause: err },
+      )
+    }
+    if (fromBlock === floor) break
+    toBlock = fromBlock - 1n
+  }
+
+  return entries.sort((a, b) =>
+    a.block === b.block ? a.logIndex - b.logIndex : a.block < b.block ? -1 : 1,
+  )
+}
+
 /**
  * Reads a record and fills in the evidence URI and the attesting transaction from the event log.
  *
@@ -463,6 +563,102 @@ export async function readValidationWithEvidence(
     ...record,
     responseURI: event?.responseURI ?? '',
     txHash: event?.txHash ?? record.requestHash,
+  }
+}
+
+export interface CurrentRecord {
+  record: ReadRecord
+  /** Every response for this agent, oldest first, so a superseded grade stays visible. */
+  history: ResponseHistoryEntry[]
+  /** Which entry the reader selected, and why it is the current one. */
+  selected: ResponseHistoryEntry
+}
+
+/**
+ * The current record among several, selected by block.
+ *
+ * The history comes from the log and the values come from storage: the log is the ordering, storage is
+ * the state. When they disagree about the selected record the read refuses rather than presenting
+ * either, because a record whose own two sources disagree is not one a gate should act on.
+ *
+ * Falls back to the storage scan when no history is readable, which keeps a record usable on a node
+ * that will not serve logs, at the cost of ordering by `lastUpdate`. That fallback is stated rather
+ * than silent: `history` comes back empty, so a caller can see which path answered.
+ */
+export async function readCurrentValidation(
+  agentId: AgentId,
+  validator?: Address,
+  options: ReadOptions & { lookbackBlocks?: bigint } = {},
+): Promise<CurrentRecord | null> {
+  const expected = getAddress(validator ?? validatorAddress())
+  let history: ResponseHistoryEntry[] = []
+  try {
+    history = await readResponseHistory(agentId, expected, options)
+  } catch {
+    history = []
+  }
+
+  if (history.length === 0) {
+    const fallback = await readValidationWithEvidence(agentId, expected, options)
+    if (fallback === null) return null
+    const selected: ResponseHistoryEntry = {
+      requestHash: fallback.requestHash,
+      responseURI: fallback.responseURI,
+      txHash: fallback.txHash,
+      block: 0n,
+      logIndex: 0,
+      score: fallback.score,
+      tag: fallback.tag,
+      responseHash: fallback.responseHash,
+      validator: fallback.validator,
+    }
+    return { record: fallback, history: [], selected }
+  }
+
+  const selected = history[history.length - 1]
+  const registryConfig = options.registry === undefined ? validationRegistry() : null
+  const registry = getAddress(options.registry ?? registryConfig!.address)
+  const chainId = options.chainId ?? registryConfig!.chainId
+  const client = publicClientFor(chainId, options.client)
+  const status = await readStatus(client, registry, selected.requestHash)
+  if (status === null) return null
+
+  if (status.responseHash.toLowerCase() !== selected.responseHash.toLowerCase()) {
+    throw new ValidationReadError(
+      `the record for agent ${agentId} disagrees with its own event: storage says ${status.responseHash}, the log says ${selected.responseHash}`,
+    )
+  }
+  if (status.validatorAddress !== expected) return null
+  if (status.responseHash === ZERO_HASH) return null
+
+  const lastUpdate = Number(status.lastUpdate)
+  const ttl = options.ttlSeconds ?? VALIDATION_TTL_SECONDS
+  const now = options.now ?? Math.floor(Date.now() / 1000)
+  const expiresAt = lastUpdate + ttl
+  if (expiresAt <= now && options.includeExpired !== true) return null
+
+  const score = status.response
+  if (gradeForScore(score) === null) {
+    throw new ValidationReadError(
+      `agent ${agentId} carries a record scored ${score}, which is not a value this methodology writes`,
+    )
+  }
+
+  return {
+    record: {
+      agentId,
+      score: score as Score,
+      responseURI: selected.responseURI,
+      responseHash: status.responseHash,
+      tag: status.tag,
+      validator: status.validatorAddress,
+      expiresAt,
+      lastUpdate,
+      requestHash: selected.requestHash,
+      txHash: selected.txHash,
+    },
+    history,
+    selected,
   }
 }
 

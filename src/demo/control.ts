@@ -19,7 +19,13 @@ import {
   isVariant,
   toolsFor,
 } from './tool-surface.ts'
-import { authorizeControl, currentToolSurface, setToolSurface } from './variant-store.ts'
+import {
+  authorizeControl,
+  currentDeclaredVersion,
+  currentToolSurface,
+  setDeclaredVersion,
+  setToolSurface,
+} from './variant-store.ts'
 
 const JSON_HEADERS = { 'content-type': 'application/json', 'cache-control': 'no-store' }
 
@@ -27,6 +33,7 @@ async function state(): Promise<JsonValue> {
   const variant = await currentToolSurface()
   return {
     variant,
+    declaredVersion: currentDeclaredVersion(),
     toolCount: toolsFor(variant).length,
     baselineToolCount: BASELINE_TOOL_COUNT,
     driftedToolCount: DRIFTED_TOOL_COUNT,
@@ -56,7 +63,14 @@ export async function handleControlRequest(request: Request): Promise<Response> 
     })
   }
 
-  const variant = (body as { variant?: unknown } | null)?.variant
+  const requestedVersion = (body as { version?: unknown } | null)?.version
+  const variant = (body as { variant?: unknown } | null)?.variant ?? (await currentToolSurface())
+  if (typeof requestedVersion !== 'undefined' && typeof requestedVersion !== 'string') {
+    return new Response(JSON.stringify({ error: 'version must be a string' }), {
+      status: 400,
+      headers: JSON_HEADERS,
+    })
+  }
   if (!isVariant(variant)) {
     return new Response(
       JSON.stringify({ error: 'variant must be one of baseline, drifted, poisoned' }),
@@ -73,5 +87,6 @@ export async function handleControlRequest(request: Request): Promise<Response> 
   }
 
   await setToolSurface(variant)
+  if (typeof requestedVersion === 'string') setDeclaredVersion(requestedVersion)
   return new Response(JSON.stringify(await state()), { status: 200, headers: JSON_HEADERS })
 }

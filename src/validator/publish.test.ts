@@ -10,6 +10,7 @@ import { evidenceHash } from './canonical.ts'
 import {
   assemblePublishCall,
   computeRequestHash,
+  readCurrentValidation,
   readValidation,
   VALIDATION_TTL_SECONDS,
 } from './validation-registry.ts'
@@ -307,5 +308,115 @@ test('a provider that returns no URI is a failed publish', async () => {
         },
       }),
     PublishError,
+  )
+})
+
+// --- A5: selecting the current record among several, by block --------------
+
+/** A registry that serves both a log history and per-hash storage, the two sources the reader uses. */
+function stubWithHistory(
+  logs: { requestHash: Hex; block: bigint; logIndex: number; score: number; responseHash: Hex; uri: string }[],
+  storage: Record<string, Status>,
+): PublicClient {
+  return {
+    getBlockNumber: async () => 1_000n,
+    getLogs: async ({ fromBlock, toBlock }: { fromBlock: bigint; toBlock: bigint }) =>
+      logs
+        .filter((entry) => entry.block >= fromBlock && entry.block <= toBlock)
+        .map((entry) => ({
+          args: {
+            requestHash: entry.requestHash,
+            responseURI: entry.uri,
+            responseHash: entry.responseHash,
+            response: entry.score,
+            tag: 'litmus-v17',
+            validatorAddress: VALIDATOR,
+          },
+          blockNumber: entry.block,
+          logIndex: entry.logIndex,
+          transactionHash: `0xtx${entry.logIndex}`,
+        })),
+    readContract: async ({ functionName, args }: { functionName: string; args: readonly unknown[] }) => {
+      if (functionName === 'getAgentValidations') return logs.map((entry) => entry.requestHash)
+      if (functionName === 'getValidationStatus') {
+        const entry = storage[String(args[0])]
+        if (entry === undefined) throw new Error('execution reverted: unknown')
+        return [
+          entry.validator,
+          entry.agentId,
+          entry.response,
+          entry.responseHash,
+          entry.tag,
+          BigInt(entry.lastUpdate),
+        ]
+      }
+      throw new Error(`unexpected call ${functionName}`)
+    },
+  } as unknown as PublicClient
+}
+
+test('the reader selects the current record by block, and the superseded one stays readable', async () => {
+  const oldHash = '0xa1' as Hex
+  const newHash = '0xa2' as Hex
+  const client = stubWithHistory(
+    [
+      { requestHash: oldHash, block: 100n, logIndex: 0, score: 100, responseHash: '0xe1' as Hex, uri: 'https://e/1' },
+      { requestHash: newHash, block: 200n, logIndex: 0, score: 0, responseHash: '0xe2' as Hex, uri: 'https://e/2' },
+    ],
+    {
+      [oldHash]: statusFor(FIXTURE_GRADE_A, { responseHash: '0xe1' as Hex, response: 100 }),
+      [newHash]: statusFor(FIXTURE_GRADE_F, { responseHash: '0xe2' as Hex, response: 0 }),
+    },
+  )
+
+  const current = await readCurrentValidation('7', VALIDATOR, {
+    client,
+    registry: REGISTRY,
+    chainId: CHAIN,
+    now: NOW,
+  })
+  assert.ok(current !== null)
+  assert.equal(current.record.score, 0, 'the F record is the current one')
+  assert.equal(current.selected.block, 200n)
+  assert.equal(current.history.length, 2, 'both records remain readable')
+  assert.deepEqual(
+    current.history.map((entry) => entry.score),
+    [100, 0],
+    'oldest first, so a superseded grade is still visible next to the current one',
+  )
+})
+
+test('two records in one block are ordered by log index, not by chance', async () => {
+  const first = '0xb1' as Hex
+  const second = '0xb2' as Hex
+  const client = stubWithHistory(
+    [
+      { requestHash: second, block: 300n, logIndex: 4, score: 0, responseHash: '0xf2' as Hex, uri: 'https://e/b' },
+      { requestHash: first, block: 300n, logIndex: 1, score: 100, responseHash: '0xf1' as Hex, uri: 'https://e/a' },
+    ],
+    {
+      [first]: statusFor(FIXTURE_GRADE_A, { responseHash: '0xf1' as Hex, response: 100 }),
+      [second]: statusFor(FIXTURE_GRADE_F, { responseHash: '0xf2' as Hex, response: 0 }),
+    },
+  )
+  const current = await readCurrentValidation('7', VALIDATOR, {
+    client,
+    registry: REGISTRY,
+    chainId: CHAIN,
+    now: NOW,
+  })
+  assert.equal(current?.selected.logIndex, 4)
+  assert.equal(current?.record.score, 0)
+})
+
+test('a record whose storage and event disagree is refused rather than presented', async () => {
+  const hash = '0xc1' as Hex
+  const client = stubWithHistory(
+    [{ requestHash: hash, block: 100n, logIndex: 0, score: 100, responseHash: '0xdead' as Hex, uri: 'https://e/1' }],
+    { [hash]: statusFor(FIXTURE_GRADE_A, { responseHash: '0xbeef' as Hex }) },
+  )
+  await assert.rejects(
+    () => readCurrentValidation('7', VALIDATOR, { client, registry: REGISTRY, chainId: CHAIN, now: NOW }),
+    /disagrees with its own event/,
   )
 })

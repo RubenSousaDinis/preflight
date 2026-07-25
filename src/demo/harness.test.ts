@@ -67,6 +67,7 @@ function demoSession(): WorkerSession {
   return {
     endpoint: 'https://demo.invalid/mcp',
     serverName: 'preflight-demo-agent',
+    serverVersion: '1.0.0',
     tools: [{ name: 'summarize_sources', description: 'Summarize the fetched sources.' }],
     callTool: (name, args) => call('tools/call', { name, arguments: args }),
   }

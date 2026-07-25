@@ -87,9 +87,16 @@ export function SubmitForm() {
               >
                 {result.grade}
               </span>
+              <span className="font-data text-[0.8rem] text-ink/60">
+                {result.score}
+              </span>
               <span className="text-[0.95rem] text-ink/75">
                 {result.finding ?? "No finding recorded for this run."}
               </span>
+            </p>
+            <p className="mt-2 font-data text-[0.72rem] text-ink/50">
+              {result.methodologyVersion} / {result.endpointsGraded} endpoint
+              {result.endpointsGraded === 1 ? "" : "s"} graded
             </p>
           </div>
         ) : null}

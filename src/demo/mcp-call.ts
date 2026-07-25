@@ -53,6 +53,8 @@ async function rpc(
 export interface WorkerSession {
   endpoint: string
   serverName: string
+  /** What the server declared about itself in the handshake. */
+  serverVersion: string
   tools: { name: string; description: string }[]
   callTool(name: string, args: JsonValue): Promise<unknown>
 }
@@ -70,7 +72,7 @@ export async function openWorker(endpoint: string, timeoutMs = 15_000): Promise<
     },
     timeoutMs,
     id++,
-  )) as { serverInfo?: { name?: string } }
+  )) as { serverInfo?: { name?: string; version?: string } }
 
   // The notification carries no id and expects no response body.
   await fetch(endpoint, {
@@ -87,6 +89,7 @@ export async function openWorker(endpoint: string, timeoutMs = 15_000): Promise<
   return {
     endpoint,
     serverName: initialized.serverInfo?.name ?? '',
+    serverVersion: initialized.serverInfo?.version ?? '',
     tools: (listed.tools ?? []).map((tool) => ({
       name: String(tool.name ?? ''),
       description: String(tool.description ?? ''),

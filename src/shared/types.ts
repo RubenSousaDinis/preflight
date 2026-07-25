@@ -78,7 +78,11 @@ export interface EndpointEvidence {
   grade: Grade
   /**
    * The evidence bundle the installed litmus package returned, verbatim.
-   * TODO-INTEGRATE (A3a): narrowed to the package's exported type once litmus is installed.
+   *
+   * Deliberately still JsonValue now that the package is installed. This field is hashed as JSON, so
+   * JSON is the type that describes it, and narrowing it to the engine's exported interface would pull
+   * engine types into every consumer of this file, the UI included. A3a validates the fields it reads
+   * before composing the bundle.
    */
   litmus: JsonValue
 }
