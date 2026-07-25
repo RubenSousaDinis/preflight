@@ -20,7 +20,36 @@ export const IDENTITY_REGISTRY_ABI = parseAbi([
   'function tokenURI(uint256 tokenId) view returns (string)',
   'function ownerOf(uint256 tokenId) view returns (address)',
   'function getAgentWallet(uint256 agentId) view returns (address)',
+  'function register(string agentURI) returns (uint256)',
+  'function setAgentURI(uint256 agentId, string newURI)',
 ])
+
+/**
+ * A registration-v1 card as an inline data URI.
+ *
+ * Inline because the card needs no hosting to be resolvable: the live registry already serves cards this
+ * way, and A2 fetches `data:` for exactly this reason. The MCP endpoint goes in a `services` entry whose
+ * name reads as MCP, which is where A2 looks first and what nothing in the public registry happens to do
+ * by accident.
+ */
+export function buildAgentCard(input: {
+  name: string
+  endpoint: string
+  description?: string
+  version?: string
+  skills?: string[]
+}): { card: Record<string, unknown>; dataUri: string } {
+  const card: Record<string, unknown> = {
+    type: 'https://eips.ethereum.org/EIPS/eip-8004#registration-v1',
+    name: input.name,
+    description: input.description ?? 'A demo agent graded by Preflight at ETHGlobal Lisbon 2026.',
+    services: [{ name: 'MCP', endpoint: input.endpoint }],
+  }
+  if (input.version !== undefined) card.version = input.version
+  if (input.skills !== undefined && input.skills.length > 0) card.skills = input.skills
+  const json = JSON.stringify(card)
+  return { card, dataUri: `data:application/json;base64,${Buffer.from(json, 'utf8').toString('base64')}` }
+}
 
 /**
  * Which chain carries the identity this deployment resolves against.
