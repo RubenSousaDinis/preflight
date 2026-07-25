@@ -13,12 +13,21 @@ import { EmptyState, ErrorState } from "../states";
 const ROW_GRID =
   "grid grid-cols-1 gap-x-5 gap-y-2 md:grid-cols-[minmax(9rem,1fr)_6rem_5rem_minmax(0,1.3fr)_9rem]";
 
-const HEADINGS = ["agent", "grade", "score", "validator", "attested"];
+const HEADINGS = ["agent", "grade", "score", "validator", "expires (reader)"];
 
-function attestedLabel(expiresAt: number): string {
-  // Rendered as the window it is valid for rather than a wall clock time: the
-  // board is read on one machine and watched on another, and a formatted local
-  // time on a projector invites a question about which clock it came from.
+/**
+ * How much of the reader's freshness bound is left.
+ *
+ * The registry stores no expiry. `ValidationStatus` carries `lastUpdate` and
+ * nothing else about time, so this bound is `lastUpdate + 86400` computed and
+ * enforced by the reader, and the column says so rather than letting a countdown
+ * imply the contract holds it.
+ *
+ * Rendered as a remaining window rather than a wall clock time: the board is read
+ * on one machine and watched on another, and a formatted local time on a projector
+ * invites a question about which clock it came from.
+ */
+function freshnessLabel(expiresAt: number): string {
   const remaining = expiresAt - Math.floor(Date.now() / 1000);
   if (remaining <= 0) return "expired";
   const hours = Math.floor(remaining / 3600);
@@ -50,7 +59,7 @@ function Row({ entry }: { entry: BoardEntry }) {
         {entry.record.validator}
       </p>
       <p className="font-data text-[0.75rem] text-ink/60">
-        {attestedLabel(entry.record.expiresAt)}
+        {freshnessLabel(entry.record.expiresAt)}
       </p>
     </article>
   );
@@ -115,7 +124,14 @@ export function Leaderboard({ board }: { board: BoardRead }) {
       ) : null}
       <p className="mt-2 max-w-[46rem] text-[0.85rem] leading-snug text-ink/60">
         A record written by any other validator is not listed here, and neither is
-        an expired one. Both are treated as absent rather than as a weaker grade.
+        one past the freshness bound. Both are treated as absent rather than as a
+        weaker grade.
+      </p>
+      <p className="mt-2 max-w-[46rem] text-[0.85rem] leading-snug text-ink/60">
+        The registry records when a record was last updated, not when it expires.
+        There is no expiry field in the contract, so the bound above is the last
+        update plus twenty four hours, computed and enforced by the reader. The gate
+        applies the tighter of that and its own policy.
       </p>
     </div>
   );

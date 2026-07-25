@@ -117,6 +117,41 @@ test("the board always renders the validator and the height it read at", () => {
   assert.ok(markup.includes("100"));
 });
 
+test("the freshness bound is disclosed as the reader's, not the chain's", () => {
+  const markup = renderToStaticMarkup(
+    <Leaderboard
+      board={{
+        entries: [{ agentId: "8427", record: record({ agentId: "8427" }), grade: "A" }],
+        unlisted: [],
+        readAtBlock: "31337",
+        chainId: 84532,
+        validator: VALIDATOR,
+        error: null,
+      }}
+    />,
+  );
+
+  // The contract has no expiry field: ValidationStatus carries lastUpdate and
+  // nothing else about time. A countdown with no disclosure would imply the chain
+  // holds a bound it does not hold.
+  assert.ok(
+    markup.includes("expires (reader)"),
+    "the column has to name who enforces the bound",
+  );
+  assert.ok(
+    markup.includes("not when it expires"),
+    "the page has to say the registry records the last update, not an expiry",
+  );
+  assert.ok(
+    markup.includes("computed and enforced by the reader"),
+    "and has to say where the bound is computed",
+  );
+  assert.ok(
+    !markup.includes("attested"),
+    "the old column heading implied the chain carried the expiry",
+  );
+});
+
 test("a board that could not read the chain says so and lists nothing", () => {
   const markup = renderToStaticMarkup(
     <Leaderboard

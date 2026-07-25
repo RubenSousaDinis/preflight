@@ -95,7 +95,14 @@ export async function SiteFooter() {
             </div>
             <div>
               <dt className="text-meta">methodology</dt>
-              <dd>{methodology ?? "unresolved"}</dd>
+              <dd>
+                {methodology ?? "could not be read"}
+                <span className="ml-2 text-meta">
+                  {methodology
+                    ? "read from the installed engine"
+                    : "the engine did not report one"}
+                </span>
+              </dd>
             </div>
             <div>
               <dt className="text-meta">receipts</dt>
