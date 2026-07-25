@@ -3,7 +3,6 @@ import { ensConfig } from "@/src/shared/config";
 import { readAgentRecords } from "@/src/validator/ens/client";
 import { sepoliaIdForMainnet } from "@/src/validator/mirror-links";
 import {
-  KNOWN_AGENTS,
   knownAgentsCatalog,
   type KnownAgentCatalogEntry,
 } from "./known-agents";
@@ -47,12 +46,6 @@ async function mapPool<T>(
   await Promise.all(
     Array.from({ length: Math.min(concurrency, items.length) }, () => worker()),
   );
-}
-
-function knownLabel(id: AgentId): { label: string; note: string } | null {
-  const known = KNOWN_AGENTS.find((agent) => agent.id === id);
-  if (known === undefined) return null;
-  return { label: known.label, note: known.note };
 }
 
 async function enrichEns(
