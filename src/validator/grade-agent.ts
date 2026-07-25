@@ -17,7 +17,7 @@ import {
   type RunLitmusOptions,
 } from '@polygraphso/litmus'
 
-import { GradeError } from '../shared/errors.ts'
+import { GradeError, oneLineReason } from '../shared/errors.ts'
 import { gradeRank, isGrade, scoreForGrade } from '../shared/grade.ts'
 import type {
   AgentCard,
@@ -33,6 +33,54 @@ import { canonicalizeValue, evidenceHash, hashCanonical, toJsonValue } from './c
 import { methodologyVersion } from './methodology.ts'
 
 const FINGERPRINT_PATTERN = /^0x[0-9a-f]{64}$/
+
+/**
+ * A status the target answered with, when the engine reported one.
+ *
+ * The engine surfaces the HTTP status on the thrown error's `code`. Reading it is what separates
+ * "this endpoint is busy" from "this endpoint is not there", and those two want opposite advice on
+ * screen.
+ */
+function statusFromEngineError(err: unknown): number | null {
+  if (typeof err !== 'object' || err === null) return null
+  const code = (err as { code?: unknown }).code
+  if (typeof code === 'number' && Number.isInteger(code) && code >= 100 && code < 600) return code
+  if (typeof code === 'string' && /^[1-5][0-9]{2}$/.test(code)) return Number(code)
+  return null
+}
+
+/** 408 and 429 are the target asking for another attempt, so they stay retryable. */
+function statusIsPermanent(status: number): boolean {
+  return status >= 400 && status < 500 && status !== 408 && status !== 429
+}
+
+/**
+ * Why an endpoint produced no grade, in terms of what the reader can do about it.
+ *
+ * A card that declares an endpoint the host does not serve is a fact about the agent, not a blip:
+ * telling a reader to retry that is telling them to wait for something that will not change. The
+ * retryable flag is what the console turns into its closing line, so getting it wrong here is what
+ * puts wrong advice on screen.
+ */
+function engineFailure(endpoint: string, err: unknown): GradeError {
+  const status = statusFromEngineError(err)
+  if (status !== null && statusIsPermanent(status)) {
+    return new GradeError(
+      `the endpoint ${endpoint} answered HTTP ${status}, so the surface this agent declares is not being served there and nothing was graded`,
+      { retryable: false, cause: err },
+    )
+  }
+  if (status !== null) {
+    return new GradeError(
+      `the endpoint ${endpoint} answered HTTP ${status}, so nothing was graded`,
+      { retryable: true, cause: err },
+    )
+  }
+  return new GradeError(`the engine could not grade ${endpoint}: ${oneLineReason(err)}`, {
+    retryable: true,
+    cause: err,
+  })
+}
 
 export type RunLitmusFn = (endpoint: string, opts?: RunLitmusOptions) => Promise<LitmusBundle>
 
@@ -191,7 +239,7 @@ export async function gradeAgent(
     } catch (err) {
       // Grading the reachable subset silently produces a letter with missing evidence, which is
       // worse than no letter, so one unreachable endpoint fails the whole grade.
-      throw new GradeError(`the engine could not grade ${endpoint}`, { retryable: true, cause: err })
+      throw engineFailure(endpoint, err)
     }
 
     const read = readLitmusBundle(endpoint, bundle)

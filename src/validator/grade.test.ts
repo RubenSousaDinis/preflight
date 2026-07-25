@@ -251,6 +251,77 @@ test('an endpoint the engine cannot grade fails the whole grade', async () => {
   )
 })
 
+/*
+  A declared endpoint the host does not serve is a fact about the card, not a blip. The console turns
+  `retryable` straight into its closing line, so a 404 that reported "this one can be retried" would
+  send a reader back to press a button that cannot start working.
+*/
+test('a status the target answered is read back, and only a transient one stays retryable', async () => {
+  function engineError(code: number, message: string): Error {
+    return Object.assign(new Error(message), { code })
+  }
+
+  await assert.rejects(
+    () =>
+      gradeAgent(card('5a', ['https://gone.example/mcp']), {
+        runLitmusImpl: async () => {
+          throw engineError(
+            404,
+            'Streamable HTTP error: Error POSTing to endpoint: <!DOCTYPE html>\n<html><body><pre>Cannot POST /mcp/agent</pre></body></html>',
+          )
+        },
+      }),
+    (err: unknown) => {
+      assert.ok(err instanceof GradeError)
+      assert.match(err.reason, /https:\/\/gone\.example\/mcp answered HTTP 404/)
+      assert.equal(err.retryable, false)
+      // The target's own error page never reaches the screen as markup.
+      assert.doesNotMatch(err.reason, /[<>]/)
+      return true
+    },
+  )
+
+  for (const [status, retryable] of [
+    [429, true],
+    [408, true],
+    [503, true],
+    [403, false],
+  ] as const) {
+    await assert.rejects(
+      () =>
+        gradeAgent(card('5b', ['https://busy.example/mcp']), {
+          runLitmusImpl: async () => {
+            throw engineError(status, `Streamable HTTP error: ${status}`)
+          },
+        }),
+      (err: unknown) => {
+        assert.ok(err instanceof GradeError)
+        assert.match(err.reason, new RegExp(`answered HTTP ${status}`))
+        assert.equal(err.retryable, retryable)
+        return true
+      },
+    )
+  }
+})
+
+test('a transport failure with no status keeps its reason instead of dropping it', async () => {
+  await assert.rejects(
+    () =>
+      gradeAgent(card('5c', ['https://down.example/mcp']), {
+        runLitmusImpl: async () => {
+          throw new Error('connect ECONNREFUSED 10.0.0.1:443')
+        },
+      }),
+    (err: unknown) => {
+      assert.ok(err instanceof GradeError)
+      assert.match(err.reason, /could not grade https:\/\/down\.example\/mcp/)
+      assert.match(err.reason, /ECONNREFUSED/)
+      assert.equal(err.retryable, true)
+      return true
+    },
+  )
+})
+
 test('a bundle with no grade, no fingerprint, or no surface throws instead of being patched', async () => {
   const cases: Partial<LitmusBundle>[] = [
     { grade: undefined as unknown as LitmusBundle['grade'] },

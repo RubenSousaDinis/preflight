@@ -167,7 +167,7 @@ export function SubmitForm({
             name="ref"
             autoComplete="off"
             spellCheck={false}
-            placeholder="2290"
+            placeholder="22332"
             onChange={() => setChainId(null)}
             className="mt-1 w-full border border-rule bg-paper px-3 py-2 font-data text-[0.85rem] text-ink outline-none focus:border-accent"
           />

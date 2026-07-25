@@ -153,3 +153,23 @@ export function reasonOf(err: unknown): string {
   if (typeof err === 'string' && err.length > 0) return err
   return 'unknown failure'
 }
+
+/** Long enough for a transport failure to stay legible, short enough not to take over a panel. */
+export const REASON_MAX_LENGTH = 200
+
+/**
+ * `reasonOf` reduced to something a panel can hold.
+ *
+ * A dead HTTP endpoint answers a JSON-RPC POST with an HTML error page, and the transport puts that
+ * page in the message verbatim. Rendering it puts a stranger's markup and a stranger's line breaks
+ * into our own UI, so the tags come out, the whitespace collapses, and the rest is cut. Use this
+ * wherever a thrown value reaches a screen; use `reasonOf` where the full text is wanted.
+ */
+export function oneLineReason(err: unknown, maxLength: number = REASON_MAX_LENGTH): string {
+  const flattened = reasonOf(err)
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (flattened.length === 0) return 'unknown failure'
+  return flattened.length > maxLength ? `${flattened.slice(0, maxLength - 3)}...` : flattened
+}
