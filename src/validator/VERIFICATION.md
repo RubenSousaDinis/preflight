@@ -384,3 +384,23 @@ One interoperability fix fell out of that last check: the MCP Inspector coerces 
 number, and the handler required a string, so it refused. Refusing was correct but needlessly brittle, so
 an integer id is now accepted and normalized, since it carries the same value losslessly. A non-integer
 still refuses.
+
+### The expiry decision, settled
+
+`01-INTERFACES.md` §3 asks for a non-zero `expirationTime` at the first write, and A3b restates it as an
+invariant. Neither is implementable against the contract A4 deployed: `ValidationStatus` is
+`{validatorAddress, agentId, response, responseHash, tag, lastUpdate, hasResponse}` and
+`validationResponse` takes no expiration argument. There is no field to write.
+
+Settled, at the operator's direction: **the bound lives in the reader and is disclosed as such.**
+`expiresAt = lastUpdate + 86400`, and the gate enforces the tighter of that and the policy's
+`maxAgeSeconds`. On the published record: `lastUpdate 1784941502` gives `expiresAt 1785027902`. The
+fail-closed rule §3 actually cares about is unchanged, since an expired record is still treated as
+absent; what moved is only where the bound is computed.
+
+Rejected: encoding an expiry in the `tag`. A3b check 6 requires the tag read back onchain to equal the
+`methodologyVersion`, so `litmus-v17|exp=…` would fail that check and would not parse for the two
+records already published.
+
+E3 should carry this into the README's limits section verbatim: the registry records when a record was
+last updated, not when it expires.
