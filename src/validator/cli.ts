@@ -13,7 +13,13 @@ import { createWalletClient, getAddress, http } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 
 import { isPreflightError, reasonOf } from '../shared/errors.ts'
-import { ENV, identityRegistryFor, requireEnv, rpcUrlFor } from '../shared/config.ts'
+import {
+  ENV,
+  identityRegistryFor,
+  requireEnv,
+  rpcUrlFor,
+  validationRegistry,
+} from '../shared/config.ts'
 import type { AgentCard } from '../shared/types.ts'
 import {
   IDENTITY_REGISTRY_ABI,
@@ -38,6 +44,19 @@ import {
   readCurrentValidation,
   readValidationWithEvidence,
 } from './validation-registry.ts'
+import {
+  ZERO_ADDRESS,
+  ensTargetFromEnv,
+  ensureSubname,
+  planSubname,
+  readAgentRecords,
+  verifyMirror,
+  writeRecords,
+} from './ens/client.ts'
+import { ENS_KEYS, buildTextRecords, type EnsKey } from './ens/records.ts'
+import { mirrorAfterPublish } from './ens/mirror.ts'
+import { configuredTopicId } from '../receipts/hcs-mirror.ts'
+import { gradeForScore } from '../shared/grade.ts'
 import { AgentWatcher, describeFlip } from './watcher.ts'
 import { liveFingerprint } from '../gates/vet/live-fingerprint.ts'
 import { openWorker } from '../demo/mcp-call.ts'
@@ -172,7 +191,232 @@ async function publish(agentId: string, chainId: number): Promise<boolean> {
   console.log(`read back     score ${record.score}, tag ${record.tag}, expiresAt ${record.expiresAt}`)
   console.log(`  validator   ${record.validator}`)
   console.log(`  responseURI ${record.responseURI.slice(0, 120) || '(not in the log)'}`)
+
+  // The ENS mirror, from the record that was just read back rather than from the grading run: that is
+  // what makes it a copy of the registry. It cannot fail this command. The flush is here only so the
+  // state can be printed before the process exits, and a mirror that failed is reported as a count.
+  const hook = mirrorAfterPublish({
+    agentId,
+    score: record.score,
+    responseURI: record.responseURI,
+    responseHash: record.responseHash,
+    tag: record.tag,
+    lastUpdate: record.lastUpdate,
+    registry: call.registry,
+    chainId: call.chainId,
+  })
+  if (hook.mirror === null) {
+    console.log(`ens mirror    not run: ${hook.skipped}`)
+  } else {
+    const state = await hook.mirror.flush(60_000)
+    hook.mirror.close()
+    console.log(
+      `ens mirror    ${state.parent}: ${state.mirrored} written, ${state.pending} pending, ${state.failed} failed`,
+    )
+    if (state.lastTx !== null) console.log(`              tx ${state.lastTx}`)
+    if (state.lastError !== null) console.log(`              last error: ${state.lastError}`)
+  }
   return true
+}
+
+/**
+ * D5b and D5d: the ENS mirror, one subcommand per step of the runbook.
+ *
+ * Dry run by default everywhere, `--send` to sign, the same shape as `publish` and `set-card`. The
+ * records are a mirror of the ValidationRegistry, so every value written here is read out of the
+ * registry first: `sync` refuses an agent with no record rather than inventing one.
+ */
+async function ensRecordsFromRegistry(
+  agentId: string,
+): Promise<{ records: Record<EnsKey, string>; lastUpdate: number; score: number } | null> {
+  const record = await readValidationWithEvidence(agentId, undefined, { includeExpired: true })
+  if (record === null) return null
+  const grade = gradeForScore(record.score)
+  if (grade === null) {
+    console.log(`refused: agent ${agentId} carries a score of ${record.score}, which this methodology does not write`)
+    return null
+  }
+  const registry = validationRegistry()
+  const head = flagValue('receipts-head')
+  const count = flagValue('receipts-count')
+  return {
+    lastUpdate: record.lastUpdate,
+    score: record.score,
+    records: buildTextRecords({
+      agentId,
+      grade,
+      score: record.score,
+      evidenceURI: record.responseURI,
+      evidenceHash: record.responseHash,
+      registry: registry.address,
+      chainId: registry.chainId,
+      updatedAt: record.lastUpdate,
+      methodology: record.tag,
+      receiptsHead: head === undefined ? null : (head as `0x${string}`),
+      receiptsCount: count === undefined ? null : Number(count),
+      hcsTopic: configuredTopicId(),
+    }),
+  }
+}
+
+async function ensStatus(ids: string[]): Promise<boolean> {
+  const target = ensTargetFromEnv()
+  if (target === null) {
+    console.log(`the ENS mirror is not configured, so nothing is mirrored and every surface reads the registry as before`)
+    console.log(`  set ${ENV.ensChainId}, ${ENV.ensRegistryAddress} and ${ENV.ensParentName} to turn it on`)
+    return false
+  }
+  console.log(`parent        ${target.parent} on chain ${target.chainId}`)
+  console.log(`registry      ${target.registry}`)
+  console.log(`node          ${target.parentNode}`)
+
+  let ok = true
+  for (const agentId of ids) {
+    const plan = await planSubname(agentId)
+    console.log(`\n${plan.name}`)
+    console.log(`  node        ${plan.node}`)
+    console.log(`  owner       ${plan.currentOwner === ZERO_ADDRESS ? '(not registered)' : plan.currentOwner}`)
+    console.log(`  resolver    ${plan.currentResolver === ZERO_ADDRESS ? '(none)' : plan.currentResolver}`)
+    console.log(`  action      ${plan.action}`)
+    if (plan.refusal !== null) {
+      console.log(`  refused     ${plan.refusal}`)
+      ok = false
+      continue
+    }
+    const read = await readAgentRecords(agentId)
+    const keys = Object.keys(read.records)
+    console.log(`  records     ${keys.length} of ${ENS_KEYS.length} set`)
+    for (const key of ENS_KEYS) {
+      const value = read.records[key]
+      if (value !== undefined) console.log(`    ${key.padEnd(24)} ${value.slice(0, 90)}`)
+    }
+  }
+  return ok
+}
+
+async function ensSubname(agentId: string): Promise<boolean> {
+  const plan = await planSubname(agentId)
+  console.log(`name          ${plan.name}`)
+  console.log(`registry      ${plan.registry} on chain ${plan.chainId}`)
+  console.log(`call          setSubnodeRecord(${plan.parentNode}, ${plan.labelHash}, ${plan.intendedOwner}, ${plan.intendedResolver}, 0)`)
+  console.log(`              owner, resolver and ttl in one transaction, so the name never resolves to nothing`)
+  console.log(`action        ${plan.action}`)
+  if (plan.refusal !== null) {
+    console.log(`refused: ${plan.refusal}`)
+    return false
+  }
+  if (plan.action === 'unchanged') {
+    console.log('\nthe name is already ours and already resolved. nothing to send.')
+    return true
+  }
+  if (!process.argv.includes('--send')) {
+    console.log('\nnothing was sent. re-run with --send to create the name.')
+    return true
+  }
+  const result = await ensureSubname(agentId)
+  console.log(`\nlanded        tx ${result.txHash}`)
+  console.log(`read back     owner ${result.owner}, resolver ${result.resolver}`)
+  return true
+}
+
+async function ensSync(agentId: string): Promise<boolean> {
+  const built = await ensRecordsFromRegistry(agentId)
+  if (built === null) {
+    console.log(`refused: agent ${agentId} has no validation record, and the mirror copies the registry rather than inventing a grade`)
+    return false
+  }
+  console.log(`agent ${agentId}, from the registry record last updated at ${built.lastUpdate}`)
+  for (const key of ENS_KEYS) {
+    const value = built.records[key]
+    console.log(`  ${key.padEnd(24)} ${value.length === 0 ? '(cleared)' : value.slice(0, 90)}`)
+  }
+  if (!process.argv.includes('--send')) {
+    console.log(`\nnothing was sent. re-run with --send to write all ${ENS_KEYS.length} records in one multicall.`)
+    return true
+  }
+  const subname = await ensureSubname(agentId)
+  if (subname.txHash !== null) console.log(`\nsubname       tx ${subname.txHash}`)
+  const written = await writeRecords(agentId, built.records)
+  console.log(`\nlanded        tx ${written.txHash}`)
+  console.log(`read back     ${written.confirmed.key} ${JSON.stringify(written.confirmed.value)} on ${written.name}`)
+  return true
+}
+
+/**
+ * D5d check 2, scriptable: the records against the registry, key by key, exit 1 on any disagreement.
+ *
+ * A mirror that disagrees with its source on stage is worse than no mirror, so this is the check the
+ * runbook runs before the mirror is shown to anyone.
+ */
+async function ensVerify(agentId: string): Promise<boolean> {
+  const built = await ensRecordsFromRegistry(agentId)
+  if (built === null) {
+    console.log(`refused: agent ${agentId} has no validation record to check the mirror against`)
+    return false
+  }
+  const verification = await verifyMirror(agentId, built.records)
+  console.log(`name          ${verification.name}`)
+  console.log(`resolver      ${verification.resolver ?? '(none)'}`)
+  console.log(`checked       ${verification.checked} keys against the registry`)
+  if (verification.resolver === null) {
+    console.log('MISMATCH: the name has no resolver, so it answers nothing')
+    return false
+  }
+  for (const diff of verification.diffs) {
+    console.log(`  ${diff.key}`)
+    console.log(`    registry  ${JSON.stringify(diff.expected).slice(0, 100)}`)
+    console.log(`    name      ${JSON.stringify(diff.actual).slice(0, 100)}`)
+  }
+  console.log(verification.ok ? 'AGREES: every key on the name matches the registry' : `MISMATCH: ${verification.diffs.length} key(s) disagree`)
+  return verification.ok
+}
+
+async function ensSet(agentId: string): Promise<boolean> {
+  const key = flagValue('key')
+  const value = flagValue('value')
+  if (key === undefined || value === undefined) {
+    console.log('ens set needs --key <key> --value <value>')
+    return false
+  }
+  if (!(ENS_KEYS as readonly string[]).includes(key)) {
+    console.log(`refused: ${key} is not one of this project's keys, and the spelling lives in one place`)
+    console.log(`  keys: ${ENS_KEYS.join(', ')}`)
+    return false
+  }
+  console.log(`call          setText(node, ${JSON.stringify(key)}, ${JSON.stringify(value)})`)
+  if (!process.argv.includes('--send')) {
+    console.log('\nnothing was sent. re-run with --send to write it.')
+    return true
+  }
+  const written = await writeRecords(agentId, { [key as EnsKey]: value })
+  console.log(`\nlanded        tx ${written.txHash}`)
+  console.log(`read back     ${written.confirmed.key} ${JSON.stringify(written.confirmed.value)}`)
+  return true
+}
+
+async function ens(sub: string | undefined, ids: string[]): Promise<boolean> {
+  if (sub === 'status') return await ensStatus(ids)
+  if (sub === 'subname' || sub === 'sync' || sub === 'verify' || sub === 'set') {
+    if (ids[0] === undefined) {
+      console.log(`ens ${sub} needs an agent id`)
+      return false
+    }
+    if (sub === 'subname') return await ensSubname(ids[0])
+    if (sub === 'sync') return await ensSync(ids[0])
+    if (sub === 'verify') return await ensVerify(ids[0])
+    return await ensSet(ids[0])
+  }
+  console.log(
+    [
+      'usage:',
+      '  cli.ts ens status [agentId …]',
+      '  cli.ts ens subname <agentId> [--send]',
+      '  cli.ts ens sync <agentId> [--send] [--receipts-head <hex>] [--receipts-count <n>]',
+      '  cli.ts ens verify <agentId> [--receipts-head <hex>] [--receipts-count <n>]',
+      '  cli.ts ens set <agentId> --key <key> --value <value> [--send]',
+    ].join('\n'),
+  )
+  return false
 }
 
 /**
@@ -392,6 +636,22 @@ async function main(): Promise<void> {
     return
   }
 
+  if (command === 'ens') {
+    // Ids up to the first flag, the same shape every other command here uses: positionals first,
+    // flags and their values after.
+    const args = rest.slice(1)
+    const firstFlag = args.findIndex((arg) => arg.startsWith('--'))
+    const ids = firstFlag === -1 ? args : args.slice(0, firstFlag)
+    try {
+      process.exitCode = (await ens(rest[0], ids)) ? 0 : 1
+    } catch (err) {
+      const code = isPreflightError(err) ? err.code : 'UNTYPED'
+      console.log(`refused [${code}] ${reasonOf(err)}`)
+      process.exitCode = 1
+    }
+    return
+  }
+
   if (command === 'watch') {
     process.exitCode = (await watch(rest[0])) ? 0 : 1
     return
@@ -491,6 +751,11 @@ async function main(): Promise<void> {
       '  cli.ts watch <agentId|mcp url> [--interval 5000] [--rounds 6] [--flip-at 2] [--flip-to drifted|--flip-card drifted]',
       '  cli.ts current <agentId> [--validator <address>]',
       '  cli.ts set-card <agentId|new> --endpoint <mcp url> [--name <name>] [--version <v>] [--send]',
+      '  cli.ts ens status [agentId …]',
+      '  cli.ts ens subname <agentId> [--send]',
+      '  cli.ts ens sync <agentId> [--send] [--receipts-head <hex>] [--receipts-count <n>]',
+      '  cli.ts ens verify <agentId> [--receipts-head <hex>] [--receipts-count <n>]',
+      '  cli.ts ens set <agentId> --key <key> --value <value> [--send]',
       '  cli.ts methodology',
     ].join('\n'),
   )

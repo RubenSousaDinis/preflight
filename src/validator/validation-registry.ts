@@ -679,7 +679,7 @@ export async function publishValidation(
   agentId: AgentId,
   responseURI: string,
   options: PublishOptions = {},
-): Promise<ValidationRecord> {
+): Promise<ReadRecord> {
   const call = assemblePublishCall({
     result,
     agentId,

@@ -350,13 +350,16 @@ export interface TextCallPlan {
  * a window in which a name carries half of one grade and half of another. Pure, so a test can decode
  * these bytes back and check that what would be sent is what the builder produced.
  */
-export function assembleTextCalls(node: Hex, records: Record<EnsKey, string>): TextCallPlan {
+export function assembleTextCalls(
+  node: Hex,
+  records: Partial<Record<EnsKey, string>>,
+): TextCallPlan {
   const keys = ENS_KEYS.filter((key) => key in records)
   const calls = keys.map((key) =>
     encodeFunctionData({
       abi: ENS_RESOLVER_ABI,
       functionName: 'setText',
-      args: [node, key, records[key]],
+      args: [node, key, records[key] ?? ''],
     }),
   )
   return {
@@ -395,7 +398,7 @@ export interface WriteRecordsResult {
 /** Writes the whole record set in one resolver multicall, then reads one key back. */
 export async function writeRecords(
   agentId: AgentId,
-  records: Record<EnsKey, string>,
+  records: Partial<Record<EnsKey, string>>,
   options: EnsClientOptions & { wallet?: WalletClient } = {},
 ): Promise<WriteRecordsResult> {
   const target = requireTarget(options.target)
@@ -409,6 +412,9 @@ export async function writeRecords(
   }
 
   const plan = assembleTextCalls(node, records)
+  if (plan.keys.length === 0) {
+    throw new EnsMirrorError(`no known record key was given for ${name}, so there is nothing to write`)
+  }
   const context = sendContext(target, options)
   const txHash = await sendAndConfirm(
     context,
@@ -421,11 +427,14 @@ export async function writeRecords(
     `${plan.keys.length} text records on ${name}`,
   )
 
-  const key: EnsKey = 'preflight.grade'
+  // One key read back on a fresh call, because the receipt says a transaction landed and not that a
+  // resolver answers with it.
+  const key = plan.keys[0]
+  const expected = records[key] ?? ''
   const value = await readText(context.reader, resolver, node, key)
-  if (value !== records[key]) {
+  if (value !== expected) {
     throw new EnsMirrorError(
-      `${txHash} landed but ${name} reads back ${key} as ${JSON.stringify(value)} rather than ${JSON.stringify(records[key])}`,
+      `${txHash} landed but ${name} reads back ${key} as ${JSON.stringify(value)} rather than ${JSON.stringify(expected)}`,
     )
   }
   return { name, node, resolver, keys: plan.keys, txHash, confirmed: { key, value } }
@@ -511,7 +520,7 @@ export interface MirrorVerification {
  */
 export async function verifyMirror(
   agentId: AgentId,
-  expected: Record<EnsKey, string>,
+  expected: Partial<Record<EnsKey, string>>,
   options: EnsClientOptions = {},
 ): Promise<MirrorVerification> {
   const keys = ENS_KEYS.filter((key) => key in expected)
@@ -519,7 +528,8 @@ export async function verifyMirror(
   const diffs: MirrorDiff[] = []
   for (const key of keys) {
     const actual = read.records[key] ?? ''
-    if (actual !== expected[key]) diffs.push({ key, expected: expected[key], actual })
+    const want = expected[key] ?? ''
+    if (actual !== want) diffs.push({ key, expected: want, actual })
   }
   return {
     name: read.name,
