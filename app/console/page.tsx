@@ -174,7 +174,7 @@ export default async function ConsolePage({
             <div className="max-w-[860px]">
               <Head
                 title="Grade an agent"
-                lede="Search registered agents by id, or paste another ERC-8004 id. ENS under the Preflight parent is optional discoverability; the registry card is what gets graded."
+                lede="Search Sepolia demos or Base mainnet 8004scan leaders by id. Grade runs against the agent's IdentityRegistry card; ENS claim on Sepolia is optional."
               />
               <div className="grid gap-8 md:grid-cols-[minmax(0,1fr)_15rem] md:items-start">
                 <SubmitForm catalog={await discoverAgentsForGrade()} />

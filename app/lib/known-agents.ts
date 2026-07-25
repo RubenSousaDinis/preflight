@@ -1,10 +1,10 @@
-import type { AgentId } from "@/src/shared";
+import type { AgentId, ChainId } from "@/src/shared";
 
 /*
-  The agents this stage already registered and published.
+  The agents this stage already registered and published on Sepolia.
 
-  The grade form takes registry ids as the primary input. ENS names are optional
-  discoverability; appearance in this catalog does not require a mirrored name.
+  The grade form also lists Base mainnet 8004scan leaders (see scan8004.ts).
+  Appearance in this catalog does not require a mirrored ENS name.
 */
 
 export type KnownAgent = {
@@ -48,15 +48,25 @@ export const KNOWN_AGENT_IDS: readonly AgentId[] = KNOWN_AGENTS.map(
   (agent) => agent.id,
 );
 
+export const SEPOLIA_IDENTITY_CHAIN_ID: ChainId = 84532;
+
 export type KnownAgentCatalogEntry = KnownAgent & {
   /** Full ENS name when a resolver already answers; otherwise null. */
   ensName: string | null;
+  /** Which IdentityRegistry to resolve against when grading. */
+  identityChainId: ChainId;
+  /** Optional Sepolia mirror id when this row is a mainnet leader that was linked. */
+  sepoliaId: string | null;
+  source: "sepolia-demo" | "8004scan" | "curated-fallback";
 };
 
-/** Catalog rows for the grade form. ENS is filled in by discovery when mirrored. */
+/** Catalog rows for Sepolia demos. ENS is filled in by discovery when mirrored. */
 export function knownAgentsCatalog(): KnownAgentCatalogEntry[] {
   return KNOWN_AGENTS.map((agent) => ({
     ...agent,
     ensName: null,
+    identityChainId: SEPOLIA_IDENTITY_CHAIN_ID,
+    sepoliaId: null,
+    source: "sepolia-demo" as const,
   }));
 }

@@ -7,24 +7,32 @@ import {
   claimSubname,
 } from "@/src/validator/ens/client";
 import { ensConfig } from "@/src/shared/config";
-import type { Grade } from "@/src/shared";
+import type { ChainId, Grade } from "@/src/shared";
+import {
+  ensureSepoliaMirror,
+  MAINNET_CHAIN_ID,
+  SEPOLIA_CHAIN_ID,
+} from "@/src/validator/sepolia-mirror";
+import { sepoliaIdForMainnet } from "@/src/validator/mirror-links";
+import { identityChainId } from "@/src/validator/identity-registry";
 import { toRenderableError, type RenderableError } from "./errors";
+import { KNOWN_AGENT_IDS } from "./known-agents";
 
 export type SubmitResult =
   | { kind: "invalid"; message: string }
   | { kind: "error"; ref: string; error: RenderableError }
   | {
       kind: "graded";
-      /** What the user typed or picked (id or ENS name). */
       ref: string;
-      /** Registry id that was graded. */
       agentId: string;
+      identityChainId: ChainId;
       grade: Grade;
       score: number;
       methodologyVersion: string;
       endpointsGraded: number;
-      /** One line off the bundle. Empty is legitimate and never reads as clean. */
       finding: string | null;
+      /** Set when a Sepolia mirror already exists for a mainnet grade. */
+      sepoliaId: string | null;
     };
 
 export type ClaimResult =
@@ -33,28 +41,41 @@ export type ClaimResult =
   | {
       kind: "claimed";
       agentId: string;
+      /** Sepolia id the ENS label uses. */
+      sepoliaId: string;
+      mainnetId: string | null;
       name: string;
       owner: string;
       txHash: string | null;
+      trustNote: string;
     };
 
-/** Long enough for a Basenames subname, short enough that nothing pathological lands. */
 const MAX_REF_LENGTH = 200;
 const ALLOWED_REF = /^[A-Za-z0-9@/:._\-+~?=&#%]+$/;
 const AGENT_ID = /^[0-9]+$/;
 
-/*
-  Beat 3's submission: resolve a registry id (primary) or an optional ENS name under
-  the Preflight parent, then grade the registered agent.
+function parseChainId(raw: string): ChainId | null {
+  const n = Number(raw);
+  if (n === MAINNET_CHAIN_ID || n === SEPOLIA_CHAIN_ID) return n;
+  return null;
+}
 
-  ENS is discoverability only. The registry remains the source of the card, and
-  nothing here sits in a hire/refuse verdict path.
+function defaultChainForId(agentId: string): ChainId {
+  if (KNOWN_AGENT_IDS.includes(agentId)) return SEPOLIA_CHAIN_ID;
+  // Booth default for unknown numeric ids: mainnet leaders (demos are in the known set).
+  return MAINNET_CHAIN_ID;
+}
+
+/*
+  Resolve a registry id (primary) or optional ENS name, on the correct identity
+  chain, then grade. 8004scan leaders resolve on Base mainnet; demos on Sepolia.
 */
 export async function submitAgent(
   _previous: SubmitResult | null,
   formData: FormData,
 ): Promise<SubmitResult> {
   const ref = String(formData.get("ref") ?? "").trim();
+  const chainRaw = String(formData.get("chainId") ?? "").trim();
 
   if (ref.length === 0) {
     return {
@@ -79,23 +100,29 @@ export async function submitAgent(
     return {
       kind: "invalid",
       message:
-        "That looks like a URL or package reference. This form grades a registered ERC-8004 agent id (for example 8441), not an MCP endpoint. Pick a known agent above, or paste the id.",
+        "That looks like a URL or package reference. This form grades a registered ERC-8004 agent id (for example 2290 or 8441), not an MCP endpoint.",
     };
   }
 
   try {
     const agentId = await resolveSubmitRef(ref);
-    const card = await resolveAgent(agentId);
+    const chain =
+      parseChainId(chainRaw) ??
+      (AGENT_ID.test(ref) ? defaultChainForId(agentId) : identityChainId());
+    const card = await resolveAgent(agentId, { chainId: chain });
     const result = await gradeAgent(card);
     return {
       kind: "graded",
       ref,
       agentId,
+      identityChainId: chain,
       grade: result.grade,
       score: result.score,
       methodologyVersion: result.methodologyVersion,
       endpointsGraded: result.bundle.coverage.endpointsGraded,
       finding: result.bundle.coverage.note,
+      sepoliaId:
+        chain === MAINNET_CHAIN_ID ? sepoliaIdForMainnet(agentId) : null,
     };
   } catch (thrown) {
     return { kind: "error", ref, error: toRenderableError(thrown) };
@@ -103,14 +130,15 @@ export async function submitAgent(
 }
 
 /**
- * Operator-assisted claim: create `agent{id}` under the Preflight parent with owner =
- * IdentityRegistry ownerOf(agentId). Does not grade or publish.
+ * Claim ENS for an agent. Mainnet ids first ensure a Sepolia mirror; the
+ * subname is agent{sepoliaId} owned by the mainnet ownerOf.
  */
 export async function claimAgent(
   _previous: ClaimResult | null,
   formData: FormData,
 ): Promise<ClaimResult> {
   const raw = String(formData.get("agentId") ?? "").trim();
+  const chainRaw = String(formData.get("chainId") ?? "").trim();
   if (!AGENT_ID.test(raw)) {
     return {
       kind: "invalid",
@@ -124,14 +152,38 @@ export async function claimAgent(
     };
   }
 
+  const chain = parseChainId(chainRaw) ?? defaultChainForId(raw);
+
   try {
+    if (chain === MAINNET_CHAIN_ID) {
+      const mirror = await ensureSepoliaMirror(raw);
+      const result = await claimSubname(mirror.sepoliaId, {
+        agentOwner: mirror.mainnetOwner,
+      });
+      return {
+        kind: "claimed",
+        agentId: raw,
+        sepoliaId: mirror.sepoliaId,
+        mainnetId: raw,
+        name: result.plan.name,
+        owner: result.agentOwner,
+        txHash: result.txHash,
+        trustNote:
+          "Grade evidence is from the mainnet card. The Sepolia identity is validator-owned; this ENS name is owned by the mainnet agent owner.",
+      };
+    }
+
     const result = await claimSubname(raw);
     return {
       kind: "claimed",
       agentId: raw,
+      sepoliaId: raw,
+      mainnetId: null,
       name: result.plan.name,
       owner: result.agentOwner,
       txHash: result.txHash,
+      trustNote:
+        "ENS subname owned by the Sepolia IdentityRegistry ownerOf for this agent.",
     };
   } catch (thrown) {
     return { kind: "error", agentId: raw, error: toRenderableError(thrown) };

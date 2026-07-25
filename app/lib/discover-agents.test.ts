@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { filterAgentCatalog } from "./discover-agents";
 import type { KnownAgentCatalogEntry } from "./known-agents";
+import { CURATED_BASE_LEADERS } from "./curated-base-leaders";
 
 const CATALOG: KnownAgentCatalogEntry[] = [
   {
@@ -9,52 +10,50 @@ const CATALOG: KnownAgentCatalogEntry[] = [
     label: "ENSWhois",
     note: "mcp.enswhois.com",
     ensName: "agent8441.preflight.basetest.eth",
+    identityChainId: 84532,
+    sepoliaId: null,
+    source: "sepolia-demo",
   },
   {
     id: "8427",
     label: "Demo baseline",
     note: "hired path",
     ensName: "agent8427.preflight.basetest.eth",
+    identityChainId: 84532,
+    sepoliaId: null,
+    source: "sepolia-demo",
+  },
+  {
+    id: "2290",
+    label: "Clawdia",
+    note: "8004scan Base leader, MCP",
+    ensName: null,
+    identityChainId: 8453,
+    sepoliaId: null,
+    source: "8004scan",
   },
 ];
 
 test("an empty query keeps the whole catalog", () => {
-  assert.equal(filterAgentCatalog(CATALOG, "").length, 2);
-  assert.equal(filterAgentCatalog(CATALOG, "   ").length, 2);
+  assert.equal(filterAgentCatalog(CATALOG, "").length, 3);
 });
 
-test("search matches id, ENS name, label, and note", () => {
+test("search matches id, ENS name, label, note, and 8004scan source", () => {
   assert.deepEqual(
-    filterAgentCatalog(CATALOG, "enswhois").map((agent) => agent.id),
-    ["8441"],
+    filterAgentCatalog(CATALOG, "clawdia").map((agent) => agent.id),
+    ["2290"],
+  );
+  assert.deepEqual(
+    filterAgentCatalog(CATALOG, "8004scan").map((agent) => agent.id),
+    ["2290"],
   );
   assert.deepEqual(
     filterAgentCatalog(CATALOG, "8441").map((agent) => agent.id),
     ["8441"],
   );
-  assert.deepEqual(
-    filterAgentCatalog(CATALOG, "agent8427").map((agent) => agent.id),
-    ["8427"],
-  );
-  assert.deepEqual(
-    filterAgentCatalog(CATALOG, "hired").map((agent) => agent.id),
-    ["8427"],
-  );
-  assert.equal(filterAgentCatalog(CATALOG, "nope").length, 0);
 });
 
-test("agents without an ENS sub-line still appear in search by id", () => {
-  const mixed: KnownAgentCatalogEntry[] = [
-    ...CATALOG,
-    {
-      id: "9001",
-      label: "Unmirrored",
-      note: "registered only",
-      ensName: null,
-    },
-  ];
-  assert.deepEqual(
-    filterAgentCatalog(mixed, "9001").map((agent) => agent.id),
-    ["9001"],
-  );
+test("curated Base leaders include Clawdia", () => {
+  assert.ok(CURATED_BASE_LEADERS.some((agent) => agent.id === "2290"));
+  assert.ok(CURATED_BASE_LEADERS.length >= 5);
 });

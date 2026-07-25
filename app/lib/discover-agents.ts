@@ -1,18 +1,19 @@
-import type { AgentId } from "@/src/shared";
+import type { AgentId, ChainId } from "@/src/shared";
 import { ensConfig } from "@/src/shared/config";
 import { readAgentRecords } from "@/src/validator/ens/client";
+import { sepoliaIdForMainnet } from "@/src/validator/mirror-links";
 import {
   KNOWN_AGENTS,
   knownAgentsCatalog,
   type KnownAgentCatalogEntry,
 } from "./known-agents";
+import { loadBaseLeaderCatalog } from "./scan8004";
 
 /*
-  Discover agents that can be graded by registry id.
+  Discover agents that can be graded: Sepolia demos + Base 8004scan leaders.
 
-  The stage-known set is always present. When ENS is configured, a bounded probe
-  of agent{id} under the Preflight parent adds an ENS sub-line only when a
-  resolver already answers. Catalog membership never requires a mirrored name.
+  ENS sub-lines are filled only when a resolver answers under the Preflight parent
+  (for Sepolia ids / linked sepolia mirrors). Catalog membership never requires ENS.
 */
 
 const DEFAULT_FROM = 8420;
@@ -54,32 +55,24 @@ function knownLabel(id: AgentId): { label: string; note: string } | null {
   return { label: known.label, note: known.note };
 }
 
-/**
- * Agents available to grade by registry id, with an ENS sub-line when mirrored.
- *
- * Falls back to the static known catalog when ENS is unconfigured. Never throws:
- * a partial probe still returns what it found plus the known set.
- */
-export async function discoverAgentsForGrade(): Promise<
-  KnownAgentCatalogEntry[]
-> {
-  const byId = new Map<string, KnownAgentCatalogEntry>();
-
-  for (const known of knownAgentsCatalog()) {
-    byId.set(known.id, known);
-  }
-
+async function enrichEns(
+  entries: KnownAgentCatalogEntry[],
+): Promise<KnownAgentCatalogEntry[]> {
   const config = ensConfig();
-  if (config === null) {
-    return [...byId.values()].sort((a, b) => Number(a.id) - Number(b.id));
-  }
+  if (config === null) return entries;
 
+  const byId = new Map(entries.map((entry) => [entry.id, entry]));
   const { from, to } = discoverRange();
   const ids: AgentId[] = [];
   for (let id = from; id <= to; id += 1) ids.push(String(id));
 
+  // Also probe linked Sepolia mirror ids outside the demo range.
+  for (const entry of entries) {
+    if (entry.sepoliaId !== null) ids.push(entry.sepoliaId);
+  }
+
   try {
-    await mapPool(ids, PROBE_CONCURRENCY, async (id) => {
+    await mapPool([...new Set(ids)], PROBE_CONCURRENCY, async (id) => {
       try {
         const read = await readAgentRecords(id, {
           timeoutMs: 4_000,
@@ -87,32 +80,59 @@ export async function discoverAgentsForGrade(): Promise<
         });
         if (read.resolver === null) return;
 
-        const known = knownLabel(id);
-        const grade = read.records["preflight.grade"];
         const existing = byId.get(id);
-        byId.set(id, {
-          id,
-          ensName: read.name,
-          label:
-            known?.label ??
-            existing?.label ??
-            (grade !== undefined ? `Grade ${grade}` : `Agent ${id}`),
-          note:
-            known?.note ??
-            existing?.note ??
-            (grade !== undefined
-              ? `ENS mirror, published grade ${grade}`
-              : "ENS mirror under the Preflight parent"),
-        });
+        if (existing !== undefined) {
+          byId.set(id, { ...existing, ensName: read.name });
+          return;
+        }
+
+        // Linked mirror: attach ENS onto the mainnet catalog row that owns this sepolia id.
+        for (const [key, row] of byId) {
+          if (row.sepoliaId === id) {
+            byId.set(key, { ...row, ensName: read.name });
+            break;
+          }
+        }
       } catch {
         // One id failing must not empty the catalog.
       }
     });
   } catch {
-    // Probe failed entirely; keep the known set already loaded.
+    // Probe failed entirely; keep what we have.
   }
 
-  return [...byId.values()].sort((a, b) => Number(a.id) - Number(b.id));
+  return [...byId.values()];
+}
+
+/**
+ * Agents available to grade: Sepolia demos + Base 8004scan leaders.
+ */
+export async function discoverAgentsForGrade(): Promise<
+  KnownAgentCatalogEntry[]
+> {
+  const demos = knownAgentsCatalog();
+  const leaders = await loadBaseLeaderCatalog();
+
+  const merged: KnownAgentCatalogEntry[] = [
+    ...demos,
+    ...leaders.map((leader) => ({
+      id: leader.id,
+      label: leader.label,
+      note: leader.note,
+      ensName: null as string | null,
+      identityChainId: leader.identityChainId as ChainId,
+      sepoliaId: sepoliaIdForMainnet(leader.id),
+      source: leader.source,
+    })),
+  ];
+
+  const withEns = await enrichEns(merged);
+  return withEns.sort((a, b) => {
+    if (a.identityChainId !== b.identityChainId) {
+      return a.identityChainId - b.identityChainId;
+    }
+    return Number(a.id) - Number(b.id);
+  });
 }
 
 /** Client-side filter for the grade search box. */
@@ -123,7 +143,15 @@ export function filterAgentCatalog(
   const needle = query.trim().toLowerCase();
   if (needle.length === 0) return [...catalog];
   return catalog.filter((agent) => {
-    const haystack = [agent.ensName, agent.label, agent.note, agent.id]
+    const haystack = [
+      agent.ensName,
+      agent.label,
+      agent.note,
+      agent.id,
+      agent.sepoliaId,
+      String(agent.identityChainId),
+      agent.source,
+    ]
       .filter((value): value is string => value !== null && value.length > 0)
       .join(" ")
       .toLowerCase();

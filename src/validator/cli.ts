@@ -59,6 +59,7 @@ import { ENS_KEYS, buildTextRecords, type EnsKey } from './ens/records.ts'
 import { mirrorAfterPublish } from './ens/mirror.ts'
 import { configuredTopicId } from '../receipts/hcs-mirror.ts'
 import { gradeForScore } from '../shared/grade.ts'
+import { ensureSepoliaMirror, mainnetMarker } from './sepolia-mirror.ts'
 import { AgentWatcher, describeFlip } from './watcher.ts'
 import { liveFingerprint } from '../gates/vet/live-fingerprint.ts'
 import { openWorker } from '../demo/mcp-call.ts'
@@ -654,9 +655,48 @@ async function setCard(agentId: string, chainId: number): Promise<boolean> {
   return true
 }
 
+/**
+ * Registers a Base mainnet agent's card on Sepolia (validator-owned) and records the link.
+ */
+async function mirrorFromMainnet(mainnetId: string): Promise<boolean> {
+  console.log(`mainnet id   ${mainnetId} on chain 8453`)
+  console.log(`sepolia      IdentityRegistry register(tokenURI) as validator`)
+  console.log(`marker       ${mainnetMarker(mainnetId)}`)
+  if (!process.argv.includes('--send')) {
+    console.log('\nnothing was sent. re-run with --send to register the Sepolia mirror.')
+    return true
+  }
+  const result = await ensureSepoliaMirror(mainnetId)
+  console.log(`\nsepolia id   ${result.sepoliaId}`)
+  console.log(`mainnet owner ${result.mainnetOwner}`)
+  console.log(`sepolia owner ${result.sepoliaOwner} (validator)`)
+  console.log(`tx           ${result.txHash ?? '(already linked)'}`)
+  console.log(
+    result.created
+      ? 'created: publish and ens claim should use the Sepolia id'
+      : 'existing link: nothing registered',
+  )
+  return true
+}
+
 async function main(): Promise<void> {
   const [command, ...rest] = process.argv.slice(2)
   const chainId = Number(flagValue('chain') ?? identityChainId())
+
+  if (command === 'mirror-from-mainnet') {
+    if (rest[0] === undefined) {
+      console.log('mirror-from-mainnet needs a mainnet agent id')
+      process.exitCode = 1
+      return
+    }
+    try {
+      process.exitCode = (await mirrorFromMainnet(rest[0])) ? 0 : 1
+    } catch (err) {
+      console.log(`refused ${reasonOf(err)}`)
+      process.exitCode = 1
+    }
+    return
+  }
 
   if (command === 'set-card') {
     process.exitCode = (await setCard(rest[0], chainId)) ? 0 : 1
@@ -777,6 +817,7 @@ async function main(): Promise<void> {
       '  cli.ts verify-evidence <uri> <expectedHash>',
       '  cli.ts watch <agentId|mcp url> [--interval 5000] [--rounds 6] [--flip-at 2] [--flip-to drifted|--flip-card drifted]',
       '  cli.ts current <agentId> [--validator <address>]',
+      '  cli.ts mirror-from-mainnet <mainnetAgentId> [--send]',
       '  cli.ts set-card <agentId|new> --endpoint <mcp url> [--name <name>] [--version <v>] [--send]',
       '  cli.ts ens status [agentId …]',
       '  cli.ts ens subname <agentId> [--send]',

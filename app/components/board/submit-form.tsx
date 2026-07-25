@@ -13,8 +13,8 @@ import { gradeColor } from "../../lib/tokens";
 import { ErrorState, PulseDots } from "../states";
 
 /*
-  Beat 3's form: searchable catalog of registered agents, grade by registry id,
-  optional ENS sub-line when a name is already mirrored. Claim is a separate CTA.
+  Grade catalog: Sepolia demos + Base 8004scan leaders. Claim for mainnet rows
+  registers a Sepolia mirror then creates ENS for the mainnet owner.
 */
 export function SubmitForm({
   catalog,
@@ -30,6 +30,7 @@ export function SubmitForm({
     FormData
   >(claimAgent, null);
   const [query, setQuery] = useState("");
+  const [chainId, setChainId] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const visible = useMemo(
     () => filterAgentCatalog(catalog, query),
@@ -37,19 +38,22 @@ export function SubmitForm({
   );
   const mirroredCount = catalog.filter((agent) => agent.ensName !== null).length;
 
-  function gradeKnown(agentId: string) {
-    if (inputRef.current) inputRef.current.value = agentId;
-    setQuery(agentId);
+  function gradeKnown(agent: KnownAgentCatalogEntry) {
+    if (inputRef.current) inputRef.current.value = agent.id;
+    setQuery(agent.id);
+    setChainId(agent.identityChainId);
     const data = new FormData();
-    data.set("ref", agentId);
+    data.set("ref", agent.id);
+    data.set("chainId", String(agent.identityChainId));
     startTransition(() => {
       formAction(data);
     });
   }
 
-  function claimKnown(agentId: string) {
+  function claimKnown(agent: KnownAgentCatalogEntry) {
     const data = new FormData();
-    data.set("agentId", agentId);
+    data.set("agentId", agent.id);
+    data.set("chainId", String(agent.identityChainId));
     startTransition(() => {
       claimAction(data);
     });
@@ -83,17 +87,28 @@ export function SubmitForm({
         ) : (
           <ul className="mt-2 max-h-[22rem] divide-y divide-rule overflow-y-auto border border-rule">
             {visible.map((agent) => (
-              <li key={agent.id} className="flex items-stretch">
+              <li
+                key={`${agent.identityChainId}:${agent.id}`}
+                className="flex items-stretch"
+              >
                 <button
                   type="button"
                   disabled={isPending || claimPending}
-                  onClick={() => gradeKnown(agent.id)}
+                  onClick={() => gradeKnown(agent)}
                   className="flex min-w-0 flex-1 items-baseline gap-3 px-3 py-2.5 text-left transition-colors hover:bg-band/60 disabled:opacity-50"
                 >
                   <span className="min-w-0 flex-1">
                     <span className="block font-data text-[0.85rem] text-ink">
                       {agent.id}
                       <span className="text-ink/45"> · {agent.label}</span>
+                    </span>
+                    <span className="mt-0.5 block font-data text-[0.68rem] text-ink/45">
+                      {agent.identityChainId === 8453
+                        ? "Base mainnet · 8004scan"
+                        : "Base Sepolia · demo"}
+                      {agent.sepoliaId !== null
+                        ? ` · Sepolia mirror ${agent.sepoliaId}`
+                        : ""}
                     </span>
                     {agent.ensName !== null ? (
                       <span className="mt-0.5 block font-data text-[0.72rem] break-all text-ink/55">
@@ -111,7 +126,7 @@ export function SubmitForm({
                 <button
                   type="button"
                   disabled={isPending || claimPending}
-                  onClick={() => claimKnown(agent.id)}
+                  onClick={() => claimKnown(agent)}
                   className="shrink-0 border-l border-rule px-3 font-data text-[0.68rem] tracking-[0.08em] text-ink/55 transition-colors hover:bg-band/60 hover:text-accent disabled:opacity-50"
                   title="Claim the Preflight ENS subname for this agent's owner"
                 >
@@ -128,6 +143,12 @@ export function SubmitForm({
       </div>
 
       <form action={formAction} className="flex flex-wrap items-end gap-3">
+        <input
+          type="hidden"
+          name="chainId"
+          value={chainId ?? ""}
+          readOnly
+        />
         <label className="min-w-0 flex-1">
           <span className="block font-data text-[0.64rem] uppercase tracking-[0.16em] text-ink/50">
             or another registry id
@@ -137,7 +158,8 @@ export function SubmitForm({
             name="ref"
             autoComplete="off"
             spellCheck={false}
-            placeholder="8441"
+            placeholder="2290"
+            onChange={() => setChainId(null)}
             className="mt-1 w-full border border-rule bg-paper px-3 py-2 font-data text-[0.85rem] text-ink outline-none focus:border-accent"
           />
         </label>
@@ -176,7 +198,7 @@ export function SubmitForm({
           >
             <p className="flex items-center gap-2 font-data text-[0.8rem] text-ink/70">
               <PulseDots />
-              claiming the ENS subname for the agent owner
+              claiming ENS (and registering a Sepolia mirror when needed)
             </p>
           </div>
         ) : null}
@@ -198,6 +220,10 @@ export function SubmitForm({
           <div className="border border-rule bg-band/50 px-4 py-3">
             <p className="font-data text-[0.74rem] break-all text-ink/55">
               agent {result.agentId}
+              {result.identityChainId === 8453 ? " · Base mainnet" : " · Base Sepolia"}
+              {result.sepoliaId !== null
+                ? ` · Sepolia mirror ${result.sepoliaId}`
+                : ""}
               {result.ref !== result.agentId ? ` · via ${result.ref}` : ""}
             </p>
             <p className="mt-1 flex items-baseline gap-3">
@@ -221,7 +247,14 @@ export function SubmitForm({
             <button
               type="button"
               disabled={claimPending}
-              onClick={() => claimKnown(result.agentId)}
+              onClick={() => {
+                const data = new FormData();
+                data.set("agentId", result.agentId);
+                data.set("chainId", String(result.identityChainId));
+                startTransition(() => {
+                  claimAction(data);
+                });
+              }}
               className="mt-3 border border-rule px-3 py-1.5 font-data text-[0.72rem] tracking-[0.08em] text-ink/70 transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
             >
               claim ENS for owner
@@ -251,9 +284,15 @@ export function SubmitForm({
             </p>
             <p className="mt-1 text-[0.95rem] text-ink/80">
               Owned by {claimResult.owner}
+              {claimResult.mainnetId !== null
+                ? ` · mainnet ${claimResult.mainnetId} → Sepolia ${claimResult.sepoliaId}`
+                : ""}
               {claimResult.txHash === null
                 ? " · already claimed"
                 : ` · tx ${claimResult.txHash}`}
+            </p>
+            <p className="mt-2 font-data text-[0.72rem] leading-snug text-ink/50">
+              {claimResult.trustNote}
             </p>
           </div>
         ) : null}
