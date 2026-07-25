@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import {
   checkUnseenAddress,
   type RunScope,
@@ -62,6 +62,40 @@ export function UnseenSlot() {
     FormData
   >(checkUnseenAddress, null);
 
+  /*
+    The four fields are controlled rather than left to the DOM.
+
+    React clears an uncontrolled field once the form action settles, which emptied
+    the address, the calldata, and the chain the moment a verdict arrived. The cost
+    lands exactly where this panel is used: checking the same contract with a second
+    calldata meant retyping both, and the chain select silently snapped back to Base
+    mainnet under a verdict that had just been produced on Sepolia. Holding the
+    values in state keeps what was asked next to the answer it produced.
+  */
+  const [address, setAddress] = useState("");
+  const [chainId, setChainId] = useState(String(UNSEEN_CHAINS[0].chainId));
+  const [calldata, setCalldata] = useState("");
+  const [sender, setSender] = useState("");
+
+  /*
+    State is not enough for the select, and this is the part worth knowing.
+
+    React puts a controlled text field back from state on the render after the
+    reset, but it does not do that for a select: the value prop it renders did not
+    change, so nothing re-applies it and the control silently drops to its first
+    option while the state behind it still holds the chain that was asked about.
+    Verified in the browser, where the prop read 84532 and the element read 8453.
+    Nothing wrong reaches the verdict, because the server action labels the answer
+    with the chain it was actually given, but the control would have sat on Base
+    mainnet under a verdict produced on Sepolia, which invites the reader to
+    mistrust the one number on the card they cannot check for themselves.
+  */
+  const chainRef = useRef<HTMLSelectElement>(null);
+  useEffect(() => {
+    const node = chainRef.current;
+    if (node !== null && node.value !== chainId) node.value = chainId;
+  }, [chainId, result, isPending]);
+
   return (
     <div className="border border-rule bg-panel">
       <header className="border-b border-rule bg-band/50 px-4 py-3 sm:px-5">
@@ -90,6 +124,8 @@ export function UnseenSlot() {
             </span>
             <input
               name="address"
+              value={address}
+              onChange={(event) => setAddress(event.target.value)}
               inputMode="text"
               autoComplete="off"
               spellCheck={false}
@@ -103,7 +139,9 @@ export function UnseenSlot() {
             </span>
             <select
               name="chainId"
-              defaultValue={UNSEEN_CHAINS[0].chainId}
+              ref={chainRef}
+              value={chainId}
+              onChange={(event) => setChainId(event.target.value)}
               className="mt-1 border border-rule bg-paper px-3 py-2 font-data text-[0.85rem] text-ink outline-none focus:border-accent"
             >
               {UNSEEN_CHAINS.map((chain) => (
@@ -128,6 +166,8 @@ export function UnseenSlot() {
               </span>
               <input
                 name="calldata"
+                value={calldata}
+                onChange={(event) => setCalldata(event.target.value)}
                 autoComplete="off"
                 spellCheck={false}
                 placeholder="0x"
@@ -140,6 +180,8 @@ export function UnseenSlot() {
               </span>
               <input
                 name="sender"
+                value={sender}
+                onChange={(event) => setSender(event.target.value)}
                 autoComplete="off"
                 spellCheck={false}
                 placeholder="defaults to the zero address"
