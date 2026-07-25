@@ -1,38 +1,92 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname, useSearchParams } from "next/navigation";
+import { VIEWS, type ViewId } from "../lib/views";
+import { Container } from "./container";
+import { Mark } from "./mark";
+
 /*
-  The stage index.
+  The console chrome: a sticky bar carrying the mark, the views, and who is acting.
 
-  The console runs three beats and an audit trail on one page, which is right for
-  a judge reading it alone and wrong for an operator moving between beats while
-  talking. This sits under the header and stays there, so a beat is one click away
-  rather than a scroll the room watches.
+  The console is tab switched rather than one long scroll, which is what the design
+  sets and what an operator needs: one view on the projector at a time, reachable
+  by URL so a beat can be opened directly rather than scrolled to.
 */
-const STOPS = [
-  { href: "#beat-1", label: "1 hiring" },
-  { href: "#beat-1-run", label: "1 run" },
-  { href: "#beat-2", label: "2 firewall" },
-  { href: "#beat-3", label: "3 board" },
-  { href: "#beat-4", label: "4 rug pull" },
-  { href: "#audit-trail", label: "receipts" },
-];
 
-export function ConsoleNav() {
+export function ConsoleNav({ view }: { view: ViewId }) {
+  const pathname = usePathname();
+  const params = useSearchParams();
+
+  const hrefFor = (id: ViewId) => {
+    const next = new URLSearchParams(params.toString());
+    next.set("view", id);
+    return `${pathname}?${next.toString()}`;
+  };
+
   return (
-    <nav
-      aria-label="Beats"
-      className="sticky top-0 z-10 -mx-5 mt-6 border-y border-rule bg-paper/95 px-5 py-2 backdrop-blur sm:-mx-7 sm:px-7"
-    >
-      <ul className="flex flex-wrap items-center gap-x-5 gap-y-1">
-        {STOPS.map((stop) => (
-          <li key={stop.href}>
-            <a
-              href={stop.href}
-              className="font-data text-[0.7rem] uppercase tracking-[0.14em] text-ink/60 no-underline hover:text-accent"
-            >
-              {stop.label}
-            </a>
-          </li>
-        ))}
-      </ul>
-    </nav>
+    <div className="sticky top-0 z-20 border-b border-rule bg-paper">
+      <Container wide className="flex items-center justify-between gap-5 py-3">
+        <div className="flex min-w-0 items-center gap-5 sm:gap-[22px]">
+          <Link href="/" className="flex shrink-0 items-center gap-2.5 text-ink">
+            <Mark width={30} />
+            <span className="font-display text-[18px] font-semibold">
+              preflight <span className="font-normal text-meta">console</span>
+            </span>
+          </Link>
+
+          <nav aria-label="Console views" className="min-w-0">
+            <ul className="flex flex-wrap gap-1 text-[14px]">
+              {VIEWS.map((entry) => {
+                const active = entry.id === view;
+                return (
+                  <li key={entry.id}>
+                    <Link
+                      href={hrefFor(entry.id)}
+                      aria-current={active ? "page" : undefined}
+                      className={`block rounded-control px-3 py-[7px] no-underline ${
+                        active
+                          ? "bg-selected font-semibold text-ink"
+                          : "text-muted hover:text-ink"
+                      }`}
+                    >
+                      {entry.label}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </nav>
+        </div>
+
+        <div className="hidden shrink-0 items-center gap-2.5 font-data text-[12.5px] lg:flex">
+          <span className="rounded-control border border-rule bg-subtle px-3 py-1.5">
+            client agent
+          </span>
+          <span className="rounded-control border border-rule bg-subtle px-3 py-1.5 font-semibold text-grade-a">
+            fail closed
+          </span>
+        </div>
+      </Container>
+    </div>
+  );
+}
+
+export function ConsoleFooter() {
+  return (
+    <div className="border-t border-rule">
+      <Container
+        wide
+        className="flex flex-wrap justify-between gap-4 py-3.5 font-data text-[11.5px] text-meta"
+      >
+        <span>
+          preflight console / <Link href="/">product page</Link> /{" "}
+          <Link href="/deck">pitch deck</Link>
+        </span>
+        <span>
+          x402 on Hedera / ERC-8004 on Base / nobody can pay for a grade
+        </span>
+      </Container>
+    </div>
   );
 }

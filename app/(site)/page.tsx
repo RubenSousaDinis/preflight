@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { Band, Container, SectionMark } from "./components/container";
-import { FLAG_NAMES, FLAG_ORDER } from "./lib/flags";
-import { loadFloor } from "./lib/floor";
-import { grade as gradeTokens, gradeColor } from "./lib/tokens";
+import { Band, Container, SectionMark } from "../components/container";
+import { FLAG_NAMES, FLAG_ORDER } from "../lib/flags";
+import { loadFloor } from "../lib/floor";
+import { grade as gradeTokens, gradeColor } from "../lib/tokens";
 
 /*
   The product page, as the design sets it: full bleed bands closed by hairlines, a

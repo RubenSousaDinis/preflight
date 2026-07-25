@@ -10,13 +10,16 @@ import type { ReactNode } from "react";
 export function Container({
   children,
   className = "",
+  wide = false,
 }: {
   children: ReactNode;
   className?: string;
+  /** The console runs wider than the site: 1180px against 1080px. */
+  wide?: boolean;
 }) {
   return (
     <div
-      className={`mx-auto w-full max-w-[var(--pf-max-width)] px-5 sm:px-8 ${className}`}
+      className={`mx-auto w-full px-5 ${wide ? "max-w-[1180px] sm:px-7" : "max-w-[var(--pf-max-width)] sm:px-8"} ${className}`}
     >
       {children}
     </div>

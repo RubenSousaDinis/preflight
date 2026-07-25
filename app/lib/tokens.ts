@@ -15,6 +15,8 @@ export const surface = {
   rule: "#ccd3cc",
   /** The quieter panel fill, for inline code and chips. */
   subtle: "#f7f8f3",
+  /** The fill under a selected tab or row. */
+  selected: "#dde4dd",
 } as const;
 
 export const text = {
@@ -121,6 +123,7 @@ const declarations: ReadonlyArray<readonly [string, string]> = [
   ["--pf-grade-d", grade.gradeD],
   ["--pf-grade-f", grade.gradeF],
   ["--pf-subtle", surface.subtle],
+  ["--pf-selected", surface.selected],
   ["--pf-muted", text.muted],
   ["--pf-meta", text.meta],
   ["--pf-on-dark", text.onDark],

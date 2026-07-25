@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import { Container } from "../components/container";
-import { DeckStage } from "../components/deck/deck-stage";
+import { Container } from "../../components/container";
+import { DeckStage } from "../../components/deck/deck-stage";
 
 export const metadata: Metadata = {
   title: "Deck",

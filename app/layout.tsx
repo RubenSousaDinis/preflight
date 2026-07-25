@@ -1,6 +1,4 @@
 import type { Metadata } from "next";
-import { SiteFooter } from "./components/site-footer";
-import { SiteHeader } from "./components/site-header";
 import { cssVariables, googleFontsHref } from "./lib/tokens";
 import "./globals.css";
 
@@ -37,11 +35,7 @@ export default function RootLayout({
         {/* The token module is the only source of colour and family in the app. */}
         <style dangerouslySetInnerHTML={{ __html: cssVariables }} />
       </head>
-      <body className="flex min-h-svh flex-col">
-        <SiteHeader />
-        <main className="flex-1">{children}</main>
-        <SiteFooter />
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

@@ -19,6 +19,7 @@
   --color-grade-d: var(--pf-grade-d);
   --color-grade-f: var(--pf-grade-f);
   --color-subtle: var(--pf-subtle);
+  --color-selected: var(--pf-selected);
   --color-muted: var(--pf-muted);
   --color-meta: var(--pf-meta);
   --color-on-dark: var(--pf-on-dark);
