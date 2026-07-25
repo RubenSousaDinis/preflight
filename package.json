@@ -10,6 +10,8 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "b8": "node --env-file-if-exists=.env.local --import tsx src/gates/tx/b8/divergence-run.ts",
+    "d5c": "node --env-file-if-exists=.env.local --import tsx src/gates/tx/d5c/broadcast-run.ts",
     "d4": "node --env-file-if-exists=.env.local --import tsx src/gates/tx/d4/unseen-run.ts",
     "test:live": "node --env-file-if-exists=.env.local --import tsx --test --test-concurrency=1 \"src/**/*.test.ts\"",
     "doctor": "node --env-file-if-exists=.env.local src/shared/doctor.ts"

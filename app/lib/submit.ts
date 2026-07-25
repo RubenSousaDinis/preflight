@@ -1,30 +1,43 @@
 "use server";
 
+import { gradeAgent } from "@/src/validator/grade-agent";
+import { resolveAgent } from "@/src/validator/resolve-agent";
 import type { Grade } from "@/src/shared";
-import type { RenderableError } from "./errors";
+import { toRenderableError, type RenderableError } from "./errors";
 
 export type SubmitResult =
   | { kind: "invalid"; message: string }
   | { kind: "error"; ref: string; error: RenderableError }
-  | { kind: "graded"; ref: string; grade: Grade; finding: string | null };
+  | {
+      kind: "graded";
+      ref: string;
+      grade: Grade;
+      score: number;
+      methodologyVersion: string;
+      endpointsGraded: number;
+      /** One line off the bundle. Empty is legitimate and never reads as clean. */
+      finding: string | null;
+    };
 
 /** Long enough for an npm ref or a URL, short enough that nothing pathological lands. */
 const MAX_REF_LENGTH = 200;
 const ALLOWED_REF = /^[A-Za-z0-9@/:._\-+~?=&#%]+$/;
 
 /*
-  Beat 3's submission.
+  Beat 3's submission: resolve the reference, then grade what it resolved to.
 
-  TODO-INTEGRATE: this runs A2's resolveAgent and A3a's gradeAgent once the engine
-  package can be imported from the app. It cannot today: @polygraphso/litmus
-  resolves docker assets and a tsx binary through runtime path lookups that
-  Turbopack cannot follow, so importing Lane 1's grading path fails the build for
-  every route. The one line that unblocks it is serverExternalPackages in
-  next.config.ts, which is outside this lane's directory and is filed as a request.
+  It grades registered agents only, and that is deliberate rather than a gap left
+  open. gradeAgent takes an AgentCard, and a card is what the registry returned:
+  its tokenURI and its raw document are hashed into the evidence bundle. Building
+  a card here for an endpoint nobody registered would put values this surface
+  invented into evidence that can later be attested, so an unregistered reference
+  gets AgentResolveError's own reason and no row.
 
-  Until then this returns a typed failure and creates no row. It never returns a
-  grade it did not obtain: an unregistered id and an unwired pipeline are both
-  answers, and neither of them is a letter.
+  See the report attached to this commit for the open question that leaves: a judge
+  submitting their own MCP server on the day is not registered, and how an
+  endpoint-only grade is represented in evidence is Lane 1's shape to decide.
+
+  Nothing here returns a letter it did not obtain. Every failure path is an error.
 */
 export async function submitAgent(
   _previous: SubmitResult | null,
@@ -52,14 +65,21 @@ export async function submitAgent(
     };
   }
 
-  return {
-    kind: "error",
-    ref,
-    error: {
-      code: "CONFIG",
-      reason:
-        "The grading pipeline is not wired to this surface yet, so this reference was not graded and no row was created.",
-      retryable: false,
-    },
-  };
+  try {
+    const card = await resolveAgent(ref);
+    const result = await gradeAgent(card);
+    return {
+      kind: "graded",
+      ref,
+      grade: result.grade,
+      score: result.score,
+      methodologyVersion: result.methodologyVersion,
+      endpointsGraded: result.bundle.coverage.endpointsGraded,
+      finding: result.bundle.coverage.note,
+    };
+  } catch (thrown) {
+    // A reference that does not resolve, a target that could not be reached, and
+    // an engine that could not run are all the same answer here: no letter.
+    return { kind: "error", ref, error: toRenderableError(thrown) };
+  }
 }
