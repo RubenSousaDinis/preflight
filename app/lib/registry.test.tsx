@@ -67,9 +67,15 @@ test("an expired record and a foreign one are both treated as absent", () => {
     false,
     "a record from another validator is ignored, not trusted",
   );
-  // Case is not a difference between two addresses.
+  // Case is not a difference between two addresses. Only the hex body is
+  // uppercased, because a checksummed address differs from a lowercase one in its
+  // body and never in its 0x prefix.
   assert.equal(
-    isListable(record({ validator: VALIDATOR.toUpperCase() }), VALIDATOR, NOW),
+    isListable(
+      record({ validator: `0x${VALIDATOR.slice(2).toUpperCase()}` }),
+      VALIDATOR,
+      NOW,
+    ),
     true,
   );
 });
