@@ -50,7 +50,7 @@ import {
   type EnsConfig,
 } from '../../shared/config.ts'
 import type { Address, AgentId, ChainId, Hex } from '../../shared/types.ts'
-import { agentEnsName, labelHashFor, nodeFor, subnameLabelFor } from './names.ts'
+import { agentEnsName, expandAgentEnsName, labelHashFor, nodeFor, subnameLabelFor } from './names.ts'
 import { ENS_KEYS, type EnsKey } from './records.ts'
 
 export const ENS_REGISTRY_ABI = parseAbi([
@@ -522,8 +522,17 @@ export async function readAgentRecords(
   options: EnsClientOptions & { keys?: readonly EnsKey[] } = {},
 ): Promise<AgentRecords> {
   const target = requireTarget(options.target)
+  return readRecordsByName(agentEnsName(agentId, target.parent), options)
+}
+
+/** Same read path as `readAgentRecords`, starting from a full or label name under the parent. */
+export async function readRecordsByName(
+  nameInput: string,
+  options: EnsClientOptions & { keys?: readonly EnsKey[] } = {},
+): Promise<AgentRecords> {
+  const target = requireTarget(options.target)
   const client = readerFor(target, options)
-  const name = agentEnsName(agentId, target.parent)
+  const name = expandAgentEnsName(nameInput, target.parent)
   const node = nodeFor(name)
 
   const resolver = await registryRead(client, target, 'resolver', node)
@@ -539,6 +548,41 @@ export async function readAgentRecords(
     if (value.length > 0) records[key] = value
   })
   return { name, node, resolver, records }
+}
+
+/**
+ * The ERC-8004 agent id a Preflight ENS name points at.
+ *
+ * Reads `preflight.agentId` from the name. The name is a mirror, so the id is what the writer put
+ * there from the ValidationRegistry — not a guess from the label. The label is only a fallback when
+ * the text record is empty, which should not happen after a successful sync.
+ */
+export async function agentIdForEnsName(
+  nameInput: string,
+  options: EnsClientOptions = {},
+): Promise<{ agentId: AgentId; name: string }> {
+  const target = requireTarget(options.target)
+  const name = expandAgentEnsName(nameInput, target.parent)
+  const read = await readRecordsByName(name, { ...options, keys: ['preflight.agentId'] })
+  if (read.resolver === null) {
+    throw new EnsMirrorError(
+      `${name} has no resolver, so it is not a registered Preflight agent name`,
+    )
+  }
+
+  const fromRecord = read.records['preflight.agentId']?.trim()
+  if (fromRecord !== undefined && /^[0-9]+$/.test(fromRecord)) {
+    return { agentId: fromRecord, name: read.name }
+  }
+
+  const fromLabel = read.name.match(/^agent([0-9]+)\./i)
+  if (fromLabel !== null) {
+    return { agentId: fromLabel[1], name: read.name }
+  }
+
+  throw new EnsMirrorError(
+    `${name} does not carry a preflight.agentId text record, so no ERC-8004 id can be read from it`,
+  )
 }
 
 export interface MirrorDiff {

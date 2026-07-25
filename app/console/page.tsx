@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { BoardRefresh } from "../components/board/board-refresh";
 import { Leaderboard } from "../components/board/leaderboard";
 import { SubmitForm } from "../components/board/submit-form";
+import { knownAgentsCatalog } from "../lib/known-agents";
 import { SubmitQr } from "../components/board/submit-qr";
 import { ConsoleFooter, ConsoleNav } from "../components/console-nav";
 import { Container } from "../components/container";
@@ -171,10 +172,10 @@ export default async function ConsolePage({
             <div className="max-w-[860px]">
               <Head
                 title="Grade an agent"
-                lede="Pick a registered agent from the catalog, or paste another ERC-8004 registry id. The harness resolves the card, runs the target in a sandbox, fingerprints the tool surface, and returns a verdict. An MCP URL alone is not enough: the agent must already be on the identity registry."
+                lede="Pick a known agent by ENS name, or paste another name under the Preflight parent. The harness reads the agent id from the name's mirror record, resolves the card, runs the target in a sandbox, and returns a verdict. An MCP URL alone is not enough."
               />
               <div className="grid gap-8 md:grid-cols-[minmax(0,1fr)_15rem] md:items-start">
-                <SubmitForm />
+                <SubmitForm catalog={knownAgentsCatalog()} />
                 <SubmitQr />
               </div>
               <p className="mt-6 max-w-[46rem] font-data text-[11.5px] leading-[1.8] text-meta">
