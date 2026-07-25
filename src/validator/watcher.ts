@@ -28,8 +28,15 @@ export interface Observation {
   declaredVersion: string | null
   /** The live tool-surface fingerprint, or null when it could not be read. */
   fingerprint: Hex | null
-  /** Set when this observation could not complete. Never conflated with "nothing changed". */
+  /**
+   * Set when any part of this observation failed. Never conflated with "nothing changed".
+   *
+   * The two channels fail independently, and so are recorded independently: a version read that fails
+   * must not suppress a fingerprint that was read successfully and moved.
+   */
   error: string | null
+  fingerprintError: string | null
+  versionError: string | null
   changed: boolean
   changeKind: 'version' | 'fingerprint' | 'both' | null
 }
@@ -56,8 +63,10 @@ export interface WatchOptions {
   intervalMs?: number
   resolve?: ResolveAgentOptions
   grade?: GradeAgentOptions
-  /** Injected observers, for tests. */
+  /** Injected observers, for tests. `observe` covers both channels; the others cover one each. */
   observe?: (agentId: AgentId) => Promise<{ declaredVersion: string | null; fingerprint: Hex }>
+  observeFingerprint?: (agentId: AgentId) => Promise<Hex>
+  observeVersion?: (agentId: AgentId) => Promise<string | null>
   regrade?: (agentId: AgentId) => Promise<GradeResult>
   onObservation?: (observation: Observation) => void
   /** Called once per detected change, with the fresh grade. Publishing is the operator's step. */
@@ -94,34 +103,87 @@ export class AgentWatcher {
 
     let declaredVersion: string | null = null
     let fingerprint: Hex | null = null
-    let error: string | null = null
-    try {
-      if (this.#options.observe !== undefined) {
+    let fingerprintError: string | null = null
+    let versionError: string | null = null
+
+    // The two channels are read separately and fail separately. Reading them under one try meant a
+    // failed version read discarded a fingerprint that had been read successfully and had moved, which
+    // is an error path swallowing a drift signal: the gate would keep hiring an agent whose surface it
+    // had already seen change.
+    if (this.#options.observe !== undefined) {
+      try {
         const seen = await this.#options.observe(this.agentId)
         declaredVersion = seen.declaredVersion
         fingerprint = seen.fingerprint
-      } else {
-        const card = await resolveAgent(this.agentId, this.#options.resolve)
-        fingerprint = await liveFingerprint(card.mcpEndpoints)
-        // The version the target asserts in its own handshake, which is a live fact rather than a
-        // registry one. The card's declared version is the fallback for a target that reports none.
-        const endpoint = card.mcpEndpoints[0]
-        if (endpoint !== undefined) {
-          const session = await openWorker(endpoint)
-          declaredVersion = session.serverVersion.length > 0 ? session.serverVersion : declaredVersionOf(card.raw)
-        } else {
-          declaredVersion = declaredVersionOf(card.raw)
+      } catch (err) {
+        fingerprintError = reasonOf(err)
+        versionError = fingerprintError
+      }
+    } else {
+      // The card is only needed by a channel that has no injected observer of its own.
+      const needsCard =
+        this.#options.observeFingerprint === undefined || this.#options.observeVersion === undefined
+      let card: Awaited<ReturnType<typeof resolveAgent>> | null = null
+      if (needsCard) {
+        try {
+          card = await resolveAgent(this.agentId, this.#options.resolve)
+        } catch (err) {
+          fingerprintError = reasonOf(err)
+          versionError = fingerprintError
         }
       }
-    } catch (err) {
-      error = reasonOf(err)
+
+      if (card !== null || !needsCard) {
+        try {
+          fingerprint =
+            this.#options.observeFingerprint !== undefined
+              ? await this.#options.observeFingerprint(this.agentId)
+              : await liveFingerprint(card!.mcpEndpoints)
+        } catch (err) {
+          fingerprintError = reasonOf(err)
+        }
+
+        try {
+          if (this.#options.observeVersion !== undefined) {
+            declaredVersion = await this.#options.observeVersion(this.agentId)
+          } else {
+            // The version the target asserts in its own handshake, which is a live fact rather than a
+            // registry one. The card's declared version is the fallback for a target reporting none.
+            const endpoint = card!.mcpEndpoints[0]
+            if (endpoint !== undefined) {
+              const session = await openWorker(endpoint)
+              declaredVersion =
+                session.serverVersion.length > 0 ? session.serverVersion : declaredVersionOf(card!.raw)
+            } else {
+              declaredVersion = declaredVersionOf(card!.raw)
+            }
+          }
+        } catch (err) {
+          versionError = reasonOf(err)
+        }
+      }
     }
 
-    const first = baseline.fingerprint === null && baseline.declaredVersion === null
+    const error =
+      fingerprintError !== null && versionError !== null && fingerprintError === versionError
+        ? fingerprintError
+        : [
+            fingerprintError === null ? null : `fingerprint: ${fingerprintError}`,
+            versionError === null ? null : `declared version: ${versionError}`,
+          ]
+            .filter((part) => part !== null)
+            .join('; ') || null
+
+    // Each comparison is gated on its own channel only. A channel with no prior reading cannot have
+    // moved, and a channel that failed this time is left out rather than treated as unchanged.
     const versionMoved =
-      error === null && !first && baseline.declaredVersion !== declaredVersion
+      versionError === null &&
+      baseline.declaredVersion !== null &&
+      baseline.declaredVersion !== declaredVersion
     const fingerprintMoved =
-      error === null && baseline.fingerprint !== null && baseline.fingerprint !== fingerprint
+      fingerprintError === null &&
+      baseline.fingerprint !== null &&
+      baseline.fingerprint !== fingerprint
     const changed = versionMoved || fingerprintMoved
 
     const observation: Observation = {
@@ -130,6 +192,8 @@ export class AgentWatcher {
       declaredVersion,
       fingerprint,
       error,
+      fingerprintError,
+      versionError,
       changed,
       changeKind: changed
         ? versionMoved && fingerprintMoved
@@ -143,16 +207,12 @@ export class AgentWatcher {
     this.#state.observations.push(observation)
     this.#options.onObservation?.(observation)
 
-    if (error !== null) {
-      // The last known values stay put. An unreadable target is not evidence that it is unchanged.
-      this.#state.failures += 1
-      return observation
-    }
-    this.#state.failures = 0
-
+    // A failed channel leaves its last known value alone: an unreadable channel is not evidence that it
+    // is unchanged. A channel that read cleanly advances, even when the other one failed.
     const previous = this.state()
-    this.#state.declaredVersion = declaredVersion
-    this.#state.fingerprint = fingerprint
+    if (fingerprintError === null) this.#state.fingerprint = fingerprint
+    if (versionError === null) this.#state.declaredVersion = declaredVersion
+    this.#state.failures = error === null ? 0 : this.#state.failures + 1
 
     if (changed) {
       try {
@@ -171,6 +231,8 @@ export class AgentWatcher {
           ...observation,
           at: now(),
           error: `the re-grade did not complete: ${reasonOf(err)}`,
+          fingerprintError,
+          versionError,
           changed: false,
           changeKind: null,
         })

@@ -193,3 +193,106 @@ test('the grade that lands is the engine s, not a diff of the old one', async ()
   assert.equal(changes[0].result.methodologyVersion, METHODOLOGY_VERSION)
   assert.notEqual(changes[0].result.evidenceHash, FIXTURE_GRADE_A.evidenceHash)
 })
+
+// --- a failure on one channel must not suppress the other ------------------
+
+/**
+ * The regression Lane 3 reported: a version read that fails while the fingerprint read succeeds used to
+ * discard the drift, so beat 4's flip never fired. An error path that swallows a drift signal is a
+ * fail-open, which is the one class of defect this project says cannot exist.
+ */
+function splitWatcher(script: {
+  fingerprints: (Hex | Error)[]
+  versions: (string | null | Error)[]
+}) {
+  let fi = 0
+  let vi = 0
+  const regrades: string[] = []
+  let clock = 1_785_060_000
+  const watcher = new AgentWatcher('42', {
+    now: () => (clock += 10),
+    observeFingerprint: async () => {
+      const step = script.fingerprints[Math.min(fi++, script.fingerprints.length - 1)]
+      if (step instanceof Error) throw step
+      return step
+    },
+    observeVersion: async () => {
+      const step = script.versions[Math.min(vi++, script.versions.length - 1)]
+      if (step instanceof Error) throw step
+      return step
+    },
+    // The default path resolves a card first, so give it one.
+    resolve: undefined,
+    regrade: async () => {
+      regrades.push('regraded')
+      return FIXTURE_GRADE_F
+    },
+  })
+  return { watcher, regrades }
+}
+
+test('a fingerprint that moved still fires when the version read fails', async () => {
+  const { watcher, regrades } = splitWatcher({
+    fingerprints: [BASELINE, DRIFTED],
+    versions: ['1.0.0', new Error('handshake failed')],
+  })
+  await watcher.check()
+  const second = await watcher.check()
+
+  assert.equal(second.changed, true, 'the drift was read successfully, so it fires')
+  assert.equal(second.changeKind, 'fingerprint')
+  assert.equal(second.fingerprintError, null)
+  assert.equal(second.versionError, 'handshake failed')
+  assert.match(String(second.error), /declared version: handshake failed/)
+  assert.equal(regrades.length, 1, 'the re-grade runs on a partial failure')
+  assert.equal(watcher.state().fingerprint, DRIFTED, 'the channel that read cleanly advances')
+  assert.equal(watcher.state().declaredVersion, '1.0.0', 'the channel that failed keeps its last value')
+})
+
+test('a version that moved still fires when the fingerprint read fails', async () => {
+  const { watcher, regrades } = splitWatcher({
+    fingerprints: [BASELINE, new Error('connection closed')],
+    versions: ['1.0.0', '1.1.0'],
+  })
+  await watcher.check()
+  const second = await watcher.check()
+
+  assert.equal(second.changed, true)
+  assert.equal(second.changeKind, 'version')
+  assert.equal(second.fingerprintError, 'connection closed')
+  assert.equal(second.versionError, null)
+  assert.equal(regrades.length, 1)
+  assert.equal(watcher.state().fingerprint, BASELINE, 'the unreadable channel is not treated as changed')
+})
+
+test('both channels failing is a recorded failure and no change at all', async () => {
+  const { watcher, regrades } = splitWatcher({
+    fingerprints: [BASELINE, new Error('closed')],
+    versions: ['1.0.0', new Error('handshake failed')],
+  })
+  await watcher.check()
+  const second = await watcher.check()
+
+  assert.equal(second.changed, false)
+  assert.equal(second.changeKind, null)
+  assert.match(String(second.error), /fingerprint: closed/)
+  assert.match(String(second.error), /declared version: handshake failed/)
+  assert.deepEqual(regrades, [], 'nothing is re-graded on an observation that saw nothing')
+  assert.equal(watcher.state().failures, 1)
+  assert.equal(watcher.state().fingerprint, BASELINE)
+  assert.equal(watcher.state().declaredVersion, '1.0.0')
+})
+
+test('a channel recovering does not manufacture a change against a stale reading', async () => {
+  const { watcher, regrades } = splitWatcher({
+    fingerprints: [BASELINE, BASELINE, BASELINE],
+    versions: ['1.0.0', new Error('blip'), '1.0.0'],
+  })
+  await watcher.check()
+  await watcher.check()
+  const third = await watcher.check()
+  assert.equal(third.changed, false)
+  assert.equal(third.error, null)
+  assert.equal(watcher.state().failures, 0, 'the failure count clears once both channels read')
+  assert.deepEqual(regrades, [])
+})
