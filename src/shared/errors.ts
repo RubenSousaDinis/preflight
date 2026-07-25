@@ -20,6 +20,7 @@ export type PreflightErrorCode =
   | 'RECEIPT'
   | 'MCP'
   | 'HARNESS'
+  | 'ENS'
 
 export interface PreflightErrorOptions {
   retryable?: boolean
@@ -110,6 +111,21 @@ export class HarnessError extends PreflightError {
   constructor(reason: string, options: PreflightErrorOptions = {}) {
     super('HARNESS', reason, options)
     this.name = 'HarnessError'
+  }
+}
+
+/**
+ * D5b, D5d: a name could not be registered, a record could not be written, or a name is owned by
+ * somebody else.
+ *
+ * It has its own code because it means less than every other code here: the ENS records are a mirror
+ * of the registry, so a caller that catches this has lost a copy, not a verdict. Nothing in a gate
+ * path can raise it, and no render path lets it out.
+ */
+export class EnsMirrorError extends PreflightError {
+  constructor(reason: string, options: PreflightErrorOptions = {}) {
+    super('ENS', reason, options)
+    this.name = 'EnsMirrorError'
   }
 }
 
