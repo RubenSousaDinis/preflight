@@ -100,8 +100,8 @@ test("subjects come from the url first, then the configured default, then the de
   );
   assert.deepEqual(
     boardSubjects(undefined),
-    ["8427", "8430", "8436", "8437"],
-    "the bare board is the four demo agents, not an empty claim",
+    ["8427", "8430", "8436", "8437", "8441"],
+    "the bare board is the demo agents plus the ENSWhois subject, not an empty claim",
   );
 });
 

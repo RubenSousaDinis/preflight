@@ -320,18 +320,40 @@ export async function ensureSubname(
   )
 
   // A send receipt says a transaction landed, not that the name exists. The read is the proof.
-  const confirmed = await planSubname(agentId, { ...options, client: context.reader })
-  if (confirmed.currentOwner !== plan.intendedOwner) {
-    throw new EnsMirrorError(
-      `${txHash} landed but ${plan.name} reads back owned by ${confirmed.currentOwner}, so the name was not created`,
-    )
-  }
+  // Public Base RPCs often answer `latest` a block behind the receipt for a second or two, so
+  // a single immediate read falsely reports the zero address. Poll until the registry agrees.
+  const confirmed = await waitForSubnameOwner(
+    agentId,
+    plan.intendedOwner,
+    { ...options, client: context.reader },
+    txHash,
+    plan.name,
+  )
   return {
     plan,
     txHash,
     owner: confirmed.currentOwner,
     resolver: confirmed.currentResolver,
   }
+}
+
+async function waitForSubnameOwner(
+  agentId: AgentId,
+  intendedOwner: Address,
+  options: EnsClientOptions & { owner?: Address; resolver?: Address },
+  txHash: Hex,
+  name: string,
+): Promise<SubnamePlan> {
+  const attempts = 8
+  let last: SubnamePlan | null = null
+  for (let i = 0; i < attempts; i++) {
+    if (i > 0) await new Promise((r) => setTimeout(r, 500 * i))
+    last = await planSubname(agentId, options)
+    if (last.currentOwner === intendedOwner) return last
+  }
+  throw new EnsMirrorError(
+    `${txHash} landed but ${name} reads back owned by ${last?.currentOwner ?? 'unknown'}, so the name was not created`,
+  )
 }
 
 export interface TextCallPlan {
