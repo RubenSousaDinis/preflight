@@ -175,7 +175,17 @@ export interface SubnamePlan {
  */
 export async function planSubname(
   agentId: AgentId,
-  options: EnsClientOptions & { owner?: Address; resolver?: Address } = {},
+  options: EnsClientOptions & {
+    owner?: Address
+    resolver?: Address
+    /**
+     * Parent-controlled reclaim for claim-time seeding only. After a claim the
+     * agent owner holds the name; setText requires the signer to be that owner,
+     * so seeding reclaims under the validator, writes, then transfers back.
+     * Never used for ordinary ensure/sync.
+     */
+    allowParentRepoint?: boolean
+  } = {},
 ): Promise<SubnamePlan> {
   const target = requireTarget(options.target)
   const client = readerFor(target, options)
@@ -205,7 +215,8 @@ export async function planSubname(
   } else if (
     currentOwner !== ZERO_ADDRESS &&
     currentOwner !== intendedOwner &&
-    currentOwner !== creator
+    currentOwner !== creator &&
+    !options.allowParentRepoint
   ) {
     refusal = `${name} is already owned by ${currentOwner}, so this mirror will not overwrite it`
   } else if (intendedResolver === ZERO_ADDRESS) {
@@ -328,6 +339,7 @@ export async function ensureSubname(
     owner?: Address
     resolver?: Address
     wallet?: WalletClient
+    allowParentRepoint?: boolean
   } = {},
 ): Promise<SubnameResult> {
   const target = requireTarget(options.target)
@@ -383,37 +395,56 @@ export async function claimSubname(
     /** When set, write mirror records before transferring ownership. */
     records?: Partial<Record<EnsKey, string>>
   } = {},
-): Promise<SubnameResult & { agentOwner: Address }> {
+): Promise<SubnameResult & { agentOwner: Address; recordsSeeded: boolean }> {
   const agentOwner = getAddress(
     options.agentOwner ?? (await readIdentityOwner(agentId, { client: options.client })),
   )
+  const seed =
+    options.records !== undefined && Object.keys(options.records).length > 0
+      ? options.records
+      : null
 
   const existing = await planSubname(agentId, { ...options, owner: agentOwner })
   if (existing.refusal !== null) throw new EnsMirrorError(existing.refusal)
-  if (existing.action === 'unchanged') {
+  // Already owned by the agent and nothing to mirror: claim is a no-op.
+  if (existing.action === 'unchanged' && seed === null) {
     return {
       plan: existing,
       txHash: null,
       owner: existing.currentOwner,
       resolver: existing.currentResolver,
       agentOwner,
+      recordsSeeded: false,
     }
   }
 
-  // Seed under the validator first when we have records to write: after transfer, only the
-  // agent owner (or an operator they approve) can setText on the public resolver.
+  // Seed under the validator first: after transfer, only the agent owner (or an
+  // operator they approve) can setText. For an already-claimed empty name, the
+  // parent briefly reclaims, writes, then returns ownership.
   const validator = getAddress(validatorAddress())
-  if (options.records !== undefined && Object.keys(options.records).length > 0) {
-    const underValidator = await planSubname(agentId, { ...options, owner: validator })
+  if (seed !== null) {
+    const underValidator = await planSubname(agentId, {
+      ...options,
+      owner: validator,
+      allowParentRepoint: true,
+    })
     if (underValidator.refusal !== null) throw new EnsMirrorError(underValidator.refusal)
     if (underValidator.action !== 'unchanged') {
-      await ensureSubname(agentId, { ...options, owner: validator })
+      await ensureSubname(agentId, {
+        ...options,
+        owner: validator,
+        allowParentRepoint: true,
+      })
     }
-    await writeRecords(agentId, options.records, options)
+    await writeRecords(agentId, seed, options)
   }
 
-  const result = await ensureSubname(agentId, { ...options, owner: agentOwner })
-  return { ...result, agentOwner }
+  const result = await ensureSubname(agentId, {
+    ...options,
+    owner: agentOwner,
+    allowParentRepoint: seed !== null,
+  })
+  return { ...result, agentOwner, recordsSeeded: seed !== null }
 }
 
 async function readIdentityOwner(

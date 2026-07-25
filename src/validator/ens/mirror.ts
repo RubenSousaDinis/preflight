@@ -17,6 +17,7 @@
 import { EnsMirrorError, reasonOf } from '../../shared/errors.ts'
 import { gradeForScore } from '../../shared/grade.ts'
 import { configuredTopicId } from '../../receipts/hcs-mirror.ts'
+import { publicAppOrigin } from '../../shared/config.ts'
 import type { Address, AgentId, ChainId, Hex } from '../../shared/types.ts'
 import {
   canValidatorWriteMirror,
@@ -24,7 +25,7 @@ import {
   writeRecords,
   type EnsTarget,
 } from './client.ts'
-import { buildTextRecords, type EnsKey } from './records.ts'
+import { agentGradeUrl, buildTextRecords, type EnsKey } from './records.ts'
 
 export interface EnsMirrorJob {
   agentId: AgentId
@@ -238,6 +239,7 @@ export function mirrorAfterPublish(
         receiptsHead: input.receiptsHead ?? null,
         receiptsCount: input.receiptsCount ?? null,
         hcsTopic: configuredTopicId(),
+        appUrl: agentGradeUrl(input.agentId, publicAppOrigin()),
       }),
     })
     return { mirror, skipped: null }

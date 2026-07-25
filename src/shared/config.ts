@@ -145,6 +145,13 @@ export const ENV = {
    * path may resolve through ENS configuration.
    */
   ensRpcUrl: 'ENS_RPC_URL',
+  /**
+   * Public origin of the Preflight app (no trailing slash), used in ENS `url` text records.
+   *
+   * Absent falls through to Vercel production URL, then the known event deploy. Cosmetic for
+   * discovery only — never read from a verdict path.
+   */
+  publicUrl: 'PREFLIGHT_PUBLIC_URL',
 } as const
 
 function env(name: string): string | undefined {
@@ -307,4 +314,26 @@ export function ensConfig(): EnsConfig | null {
 /** The endpoint the mirror talks to. The override keeps the mirror chain-agnostic. */
 export function ensRpcUrl(chainId: ChainId): string {
   return optionalEnv(ENV.ensRpcUrl) ?? rpcUrlFor(chainId)
+}
+
+/**
+ * Origin written into ENS `url` records (and description). Discovery only.
+ *
+ * Order: `PREFLIGHT_PUBLIC_URL`, then Vercel production/preview host, then the known event
+ * deploy so a local claim still points somewhere useful.
+ */
+export function publicAppOrigin(): string {
+  const configured = optionalEnv(ENV.publicUrl)
+  if (configured !== undefined) return configured.replace(/\/+$/, '')
+
+  const vercel =
+    optionalEnv('VERCEL_PROJECT_PRODUCTION_URL') ?? optionalEnv('VERCEL_URL')
+  if (vercel !== undefined) {
+    const host = vercel.replace(/\/+$/, '')
+    return host.startsWith('http://') || host.startsWith('https://')
+      ? host
+      : `https://${host}`
+  }
+
+  return 'https://preflight-bay.vercel.app'
 }
