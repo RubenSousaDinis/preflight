@@ -101,10 +101,11 @@ test("a malformed submission is refused and creates no row", async () => {
 
   const wellFormed = new FormData();
   wellFormed.set("ref", "npm/@scope/server");
-  const unwired = await submitAgent(null, wellFormed);
-  // Well formed and still not a grade: the pipeline is not wired, and an
-  // unwired pipeline is an answer rather than a letter.
-  assert.equal(unwired.kind, "error");
+  const unresolvable = await submitAgent(null, wellFormed);
+  // Well formed and still not a grade. A reference the registry cannot resolve
+  // is an error carrying its own reason, never a letter and never a blank row,
+  // because a row with no grade reads as a grade of none.
+  assert.equal(unresolvable.kind, "error");
 
   assert.equal((await readBoard()).entries.length, before);
 });
