@@ -87,8 +87,9 @@ export function PaymentSummary({ events }: { events: HarnessEvent[] }) {
       </dl>
 
       <p className="mt-4 max-w-[46rem] text-[0.9rem] leading-relaxed text-ink/75">
-        x402 pays the hired agent on the {rail} rail, gated on grade A plus a live
-        fingerprint match. It never pays for a grade, and nobody can pay for one.
+        x402 pays the hired agent on the {rail} rail, gated on the grade floor,
+        B or above, plus a live fingerprint match. It never pays for a grade, and
+        nobody can pay for one.
       </p>
     </div>
   );
