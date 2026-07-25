@@ -1,9 +1,13 @@
 "use client";
 
-import { startTransition, useActionState, useMemo, useRef, useState } from "react";
+import { startTransition, useActionState, useRef, useState } from "react";
 import { baseSepoliaTxUrl, ensAppUrl } from "../../lib/ens-app-url";
-import { filterAgentCatalog } from "../../lib/filter-agent-catalog";
+import { agentLabelFor } from "../../lib/agent-display";
 import type { KnownAgentCatalogEntry } from "../../lib/known-agents";
+import {
+  AgentCatalogPicker,
+  PickerAction,
+} from "../agents/agent-catalog-picker";
 import {
   claimAgent,
   submitAgent,
@@ -35,17 +39,14 @@ export function SubmitForm({
   >(claimAgent, null);
   const [query, setQuery] = useState("");
   const [chainId, setChainId] = useState<number | null>(null);
+  const [gradingId, setGradingId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const visible = useMemo(
-    () => filterAgentCatalog(catalog, query),
-    [catalog, query],
-  );
   const mirroredCount = catalog.filter((agent) => agent.ensName !== null).length;
 
   function gradeKnown(agent: KnownAgentCatalogEntry) {
     if (inputRef.current) inputRef.current.value = agent.id;
-    setQuery(agent.id);
     setChainId(agent.identityChainId);
+    setGradingId(agent.id);
     const data = new FormData();
     data.set("ref", agent.id);
     data.set("chainId", String(agent.identityChainId));
@@ -66,89 +67,35 @@ export function SubmitForm({
   return (
     <div id="submit">
       <div className="mb-5">
-        <label className="block">
-          <span className="block font-data text-[0.64rem] uppercase tracking-[0.16em] text-ink/50">
-            search known agents
-          </span>
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            autoComplete="off"
-            spellCheck={false}
-            placeholder="registry id, label, or ENS name"
-            className="mt-1 w-full border border-rule bg-paper px-3 py-2 font-data text-[0.85rem] text-ink outline-none focus:border-accent"
-          />
-        </label>
-
-        {catalog.length === 0 ? (
-          <p className="mt-2 font-data text-[0.8rem] text-ink/55">
-            No known agents are configured for this booth.
-          </p>
-        ) : visible.length === 0 ? (
-          <p className="mt-2 font-data text-[0.8rem] text-ink/55">
-            No agents match {JSON.stringify(query.trim())}.
-          </p>
-        ) : (
-          <ul className="mt-2 max-h-[22rem] divide-y divide-rule overflow-y-auto border border-rule">
-            {visible.map((agent) => (
-              <li
-                key={`${agent.identityChainId}:${agent.id}`}
-                className="flex items-stretch"
+        <AgentCatalogPicker
+          catalog={catalog}
+          query={query}
+          onQueryChange={setQuery}
+          label="search known agents"
+          isSelected={(agent) => agent.id === gradingId}
+          actions={(agent) => (
+            <>
+              <PickerAction
+                onClick={() => gradeKnown(agent)}
+                disabled={isPending || claimPending}
+                active={agent.id === gradingId}
               >
-                <div className="min-w-0 flex-1 px-3 py-2.5">
-                  <p className="font-data text-[0.85rem] text-ink">
-                    {agent.id}
-                    <span className="text-ink/45"> · {agent.label}</span>
-                  </p>
-                  <p className="mt-0.5 font-data text-[0.68rem] text-ink/45">
-                    {agent.identityChainId === 8453
-                      ? "Base mainnet · 8004scan"
-                      : "Base Sepolia · demo"}
-                    {agent.sepoliaId !== null
-                      ? ` · Sepolia mirror ${agent.sepoliaId}`
-                      : ""}
-                  </p>
-                  {agent.ensName !== null ? (
-                    <a
-                      href={ensAppUrl(agent.ensName)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-0.5 block font-data text-[0.72rem] break-all text-accent underline-offset-2 hover:underline"
-                    >
-                      {agent.ensName}
-                    </a>
-                  ) : null}
-                  <p className="mt-0.5 font-data text-[0.68rem] text-ink/45">
-                    {agent.note}
-                  </p>
-                </div>
-                <button
-                  type="button"
+                {isPending && agent.id === gradingId ? "grading" : "grade"}
+              </PickerAction>
+              {agent.identityChainId !== 8453 || allowMainnetClaim ? (
+                <PickerAction
+                  onClick={() => claimKnown(agent)}
                   disabled={isPending || claimPending}
-                  onClick={() => gradeKnown(agent)}
-                  className="shrink-0 border-l border-rule px-3 font-data text-[0.72rem] tracking-[0.08em] text-accent transition-colors hover:bg-band/60 disabled:opacity-50"
+                  tone="quiet"
+                  title="Claim the Preflight ENS subname for this agent's owner"
                 >
-                  grade
-                </button>
-                {agent.identityChainId !== 8453 || allowMainnetClaim ? (
-                  <button
-                    type="button"
-                    disabled={isPending || claimPending}
-                    onClick={() => claimKnown(agent)}
-                    className="shrink-0 border-l border-rule px-3 font-data text-[0.68rem] tracking-[0.08em] text-ink/55 transition-colors hover:bg-band/60 hover:text-accent disabled:opacity-50"
-                    title="Claim the Preflight ENS subname for this agent's owner"
-                  >
-                    claim
-                  </button>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        )}
-        <p className="mt-2 font-data text-[0.68rem] text-ink/45">
-          {visible.length} of {catalog.length} agents
-          {mirroredCount > 0 ? ` · ${mirroredCount} with ENS` : ""}
-        </p>
+                  claim
+                </PickerAction>
+              ) : null}
+            </>
+          )}
+          footNote={mirroredCount > 0 ? ` / ${mirroredCount} with ENS` : null}
+        />
       </div>
 
       <form action={formAction} className="flex flex-wrap items-end gap-3">
@@ -227,13 +174,18 @@ export function SubmitForm({
 
         {!isPending && result?.kind === "graded" ? (
           <div className="border border-rule bg-band/50 px-4 py-3">
-            <p className="font-data text-[0.74rem] break-all text-ink/55">
-              agent {result.agentId}
-              {result.identityChainId === 8453 ? " · Base mainnet" : " · Base Sepolia"}
+            <p className="font-display text-[1.05rem] leading-tight font-semibold">
+              {agentLabelFor(result.agentId, catalog) ?? result.agentId}
+            </p>
+            <p className="mt-0.5 font-data text-[0.7rem] break-all text-ink/45">
+              id {result.agentId}
+              {result.identityChainId === 8453
+                ? " / Base mainnet"
+                : " / Base Sepolia"}
               {result.sepoliaId !== null
-                ? ` · Sepolia mirror ${result.sepoliaId}`
+                ? ` / Sepolia mirror ${result.sepoliaId}`
                 : ""}
-              {result.ref !== result.agentId ? ` · via ${result.ref}` : ""}
+              {result.ref !== result.agentId ? ` / via ${result.ref}` : ""}
             </p>
             <p className="mt-1 flex items-baseline gap-3">
               <span

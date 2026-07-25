@@ -17,6 +17,10 @@ import { VerdictCard } from "./verdict-card";
   staged fixtures and an address handed over on the day run through the same
   pipeline, and a slot that appeared only once the fixtures were done would look
   staged, because it would be.
+
+  It leads the view rather than following the fixtures. A visitor who has to scroll
+  past four recorded verdicts to find the one box that runs anything is reading a
+  page about the product instead of using it.
 */
 /**
  * What this particular run could and could not check.
@@ -59,21 +63,22 @@ export function UnseenSlot() {
   >(checkUnseenAddress, null);
 
   return (
-    <div className="border border-dashed border-rule bg-panel">
-      <header className="border-b border-dashed border-rule px-4 py-3 sm:px-5">
+    <div className="border border-rule bg-panel">
+      <header className="border-b border-rule bg-band/50 px-4 py-3 sm:px-5">
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-          <h3 className="font-display text-[1.05rem] leading-tight font-semibold">
-            Unseen contract
-          </h3>
+          <h2 className="font-display text-[1.25rem] leading-tight font-semibold">
+            Check a contract
+          </h2>
           <p className="font-data text-[0.66rem] uppercase tracking-[0.14em] text-ink/50">
-            reserved
+            live gate / base mainnet or sepolia
           </p>
         </div>
-        <p className="mt-1 text-[0.88rem] leading-snug text-ink/70">
+        <p className="mt-1 max-w-[52rem] text-[0.92rem] leading-snug text-ink/75">
           Paste an address nobody here wrote. It runs through the same four
-          checks, on the same pipeline, as everything above. The code is
+          checks, on the same pipeline, as the recorded calls below. The code is
           fingerprinted and compared to its graded version before anything is
-          simulated, so an address on its own already answers something.
+          simulated, so an address on its own already answers something. Add
+          calldata to check a specific call.
         </p>
       </header>
 

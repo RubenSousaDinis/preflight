@@ -1,5 +1,7 @@
+import { agentLabelFor } from "../../lib/agent-display";
 import type { BoardEntry, BoardRead } from "../../lib/registry";
 import { gradeColor } from "../../lib/tokens";
+import { AgentName } from "../agents/agent-name";
 import { EmptyState, ErrorState } from "../states";
 
 /*
@@ -38,20 +40,22 @@ function freshnessLabel(expiresAt: number): string {
 function Row({ entry }: { entry: BoardEntry }) {
   return (
     <article className={`${ROW_GRID} px-4 py-4 sm:px-5`}>
+      {/*
+        The name leads, the id follows it. Nothing is dropped: the id is still on
+        the row and still what a reader checks against the registry. A row this
+        build has no name for renders the id as its heading, which is the ordinary
+        state for an agent nobody has labelled.
+      */}
       <div className="min-w-0">
-        <p className="font-data text-[0.95rem] break-all">{entry.agentId}</p>
-        <p className="mt-0.5 font-data text-[0.68rem] break-all text-ink/45">
+        <AgentName
+          name={agentLabelFor(entry.agentId)}
+          agentId={entry.agentId}
+          ensName={entry.ensName}
+          size="compact"
+        />
+        <p className="mt-0.5 font-data text-[0.66rem] break-all text-ink/40">
           {entry.record.tag}
         </p>
-        {/*
-          The name under the id, never in place of it. A row with no name renders
-          as it always did, which is the ordinary state until one is registered.
-        */}
-        {entry.ensName ? (
-          <p className="mt-0.5 font-data text-[0.68rem] break-all text-ink/45">
-            {entry.ensName}
-          </p>
-        ) : null}
       </div>
       <div>
         <span

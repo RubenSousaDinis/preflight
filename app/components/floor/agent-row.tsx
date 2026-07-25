@@ -1,7 +1,9 @@
 import type { ReactNode } from "react";
 import type { Grade, Score } from "@/src/shared";
+import { agentLabelFor } from "../../lib/agent-display";
 import type { FloorRow } from "../../lib/floor";
 import { gradeColor } from "../../lib/tokens";
+import { AgentName as AgentIdentity } from "../agents/agent-name";
 import { ErrorState, PulseDots } from "../states";
 
 /*
@@ -116,25 +118,18 @@ function VerdictValue({ verdict }: { verdict: "HIRE" | "REFUSE" }) {
   );
 }
 
+/*
+  The name leads and the id follows it, quieter. The id is the verifiable thing, so
+  it stays on the row; it is not what a reader should have to decode first. A row
+  with no name anywhere renders the id as its heading and repeats it nowhere.
+*/
 function AgentName({ row }: { row: FloorRow }) {
   return (
-    <div className="min-w-0">
-      <p className="font-display text-[1.12rem] leading-tight font-semibold break-words">
-        {row.card.name || row.agentId}
-      </p>
-      <p className="mt-0.5 font-data text-[0.7rem] break-all text-ink/50">
-        {row.agentId}
-      </p>
-      {/*
-        The name sits under the id, never instead of it. The id is the thing that
-        is verifiable, and a row with no name renders exactly as it did before.
-      */}
-      {row.ensName ? (
-        <p className="mt-0.5 font-data text-[0.68rem] break-all text-ink/45">
-          {row.ensName}
-        </p>
-      ) : null}
-    </div>
+    <AgentIdentity
+      name={row.card.name || agentLabelFor(row.agentId)}
+      agentId={row.agentId}
+      ensName={row.ensName}
+    />
   );
 }
 

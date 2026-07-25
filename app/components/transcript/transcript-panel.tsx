@@ -1,7 +1,11 @@
 import type { ReactNode } from "react";
 import type { HarnessEvent, Receipt } from "@/src/shared";
 import { formatHbar } from "../../lib/transcript";
+import { AgentRef } from "../agents/agent-name";
 import { EmptyState } from "../states";
+
+/** How an id becomes a name here. Null keeps the id, which is the honest fallback. */
+export type NameFor = (agentId: string) => string | null;
 
 /*
   The beat-1 run, rendered straight off the event stream.
@@ -64,15 +68,26 @@ function tone(event: HarnessEvent): Tone {
   }
 }
 
-function Body({ event }: { event: HarnessEvent }) {
+function Body({
+  event,
+  nameFor,
+}: {
+  event: HarnessEvent;
+  nameFor: NameFor;
+}) {
   switch (event.type) {
     case "shopping":
       return (
         <>
           <Line>{event.task}</Line>
+          <p className="mt-1 text-[0.85rem] leading-snug text-ink/60">
+            candidates{" "}
+            {event.candidates
+              .map((agentId) => nameFor(agentId) ?? agentId)
+              .join(", ")}
+          </p>
           <Mono>
-            candidates {event.candidates.join(", ")} / budget{" "}
-            {formatHbar(event.budget)}
+            {event.candidates.join(", ")} / budget {formatHbar(event.budget)}
           </Mono>
         </>
       );
@@ -80,7 +95,7 @@ function Body({ event }: { event: HarnessEvent }) {
       return (
         <>
           <Line>
-            <span className="font-data text-[0.8rem]">{event.agentId}</span>{" "}
+            <AgentRef name={nameFor(event.agentId)} agentId={event.agentId} />{" "}
             {event.decision.verdict === "HIRE" ? "cleared" : "refused"}.{" "}
             {event.decision.reason}
           </Line>
@@ -91,8 +106,8 @@ function Body({ event }: { event: HarnessEvent }) {
       return (
         <>
           <Line>
-            <span className="font-data text-[0.8rem]">{event.agentId}</span> was
-            hired for the task.
+            <AgentRef name={nameFor(event.agentId)} agentId={event.agentId} />{" "}
+            was hired for the task.
           </Line>
           <Mono>{event.decision.reason}</Mono>
         </>
@@ -102,8 +117,8 @@ function Body({ event }: { event: HarnessEvent }) {
         <>
           <Line>
             {formatHbar(event.amount)} to{" "}
-            <span className="font-data text-[0.8rem]">{event.agentId}</span> for
-            the call it ran.
+            <AgentRef name={nameFor(event.agentId)} agentId={event.agentId} />{" "}
+            for the call it ran.
           </Line>
           <Mono>
             rail {event.rail} / {event.txRef}
@@ -116,7 +131,7 @@ function Body({ event }: { event: HarnessEvent }) {
         <>
           <Line>
             Output returned by{" "}
-            <span className="font-data text-[0.8rem]">{event.agentId}</span>,
+            <AgentRef name={nameFor(event.agentId)} agentId={event.agentId} />,
             shown as data. Nothing inside it is read as an instruction.
           </Line>
           <pre className="mt-2 max-w-full overflow-x-auto border border-rule bg-band/60 px-3 py-2 font-data text-[0.72rem] leading-relaxed break-words whitespace-pre-wrap text-ink/80">
@@ -146,8 +161,17 @@ function Body({ event }: { event: HarnessEvent }) {
             Hired {event.hired.length}, refused {event.refused.length}. Spent{" "}
             {formatHbar(event.spent)} of {formatHbar(event.budget)}.
           </Line>
+          {event.refused.length > 0 ? (
+            <p className="mt-1 text-[0.85rem] leading-snug text-ink/60">
+              refused{" "}
+              {event.refused
+                .map((agentId) => nameFor(agentId) ?? agentId)
+                .join(", ")}
+            </p>
+          ) : null}
           <Mono>
-            {event.receiptCount} receipts / refused {event.refused.join(", ")}
+            {event.receiptCount} receipts
+            {event.refused.length > 0 ? ` / ${event.refused.join(", ")}` : ""}
           </Mono>
         </>
       );
@@ -167,7 +191,13 @@ function Body({ event }: { event: HarnessEvent }) {
   }
 }
 
-export function TranscriptPanel({ events }: { events: HarnessEvent[] }) {
+export function TranscriptPanel({
+  events,
+  nameFor = () => null,
+}: {
+  events: HarnessEvent[];
+  nameFor?: NameFor;
+}) {
   if (events.length === 0) {
     return (
       <EmptyState>
@@ -193,7 +223,7 @@ export function TranscriptPanel({ events }: { events: HarnessEvent[] }) {
             <Badge label={event.type} tone={tone(event)} />
           </div>
           <div className="min-w-0">
-            <Body event={event} />
+            <Body event={event} nameFor={nameFor} />
           </div>
         </li>
       ))}

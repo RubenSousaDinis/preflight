@@ -19,7 +19,11 @@ import { readDemoTarget } from "../lib/demo-target";
 import { readEnsMirror } from "../lib/ens";
 import { loadFirewallQueue } from "../lib/firewall";
 import { FLOOR_POLICY, loadFloor } from "../lib/floor";
-import { DRIFT_AGENT_ID, RUN_CANDIDATE_IDS } from "../lib/known-agents";
+import {
+  DRIFT_AGENT_ID,
+  RUN_CANDIDATE_IDS,
+  knownAgentsCatalog,
+} from "../lib/known-agents";
 import { readMirrorStatus } from "../lib/hcs";
 import { loadReceipts } from "../lib/receipts";
 import { boardSubjects, readBoard } from "../lib/registry";
@@ -109,33 +113,53 @@ export default async function ConsolePage({
               <Head
                 title="The hiring floor"
                 meta={`POLICY  minGrade ${FLOOR_POLICY.minGrade} / fail closed / fingerprint drift means refuse`}
-                lede="Candidate agents, gated on the attested grade and then on a fresh fingerprint recheck. The three rows are illustrative fixtures; the run beside them calls the real gate against the registered demo agents."
+                lede="Pick candidate agents and run the task. Each one is gated on its attested grade and then on a fresh fingerprint recheck before it is hired, and the transcript is the run's own event stream rather than a description of it."
               />
-              <div className="grid items-start gap-6">
-                <div className="min-w-0 space-y-4">
-                  <DemoTargetLine target={demoTarget} />
+              <div className="space-y-4">
+                <DemoTargetLine target={demoTarget} />
+
+                <section className="rounded-card border border-rule bg-panel">
+                  <header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-rule bg-band/50 px-4 py-3 sm:px-5">
+                    <h2 className="font-display text-[1.25rem] leading-tight font-semibold">
+                      Hire an agent for a task
+                    </h2>
+                    <p className="font-data text-[10.5px] tracking-[0.1em] text-meta">
+                      RUN TRANSCRIPT / runTask()
+                    </p>
+                  </header>
+                  <div className="px-4 py-4 sm:px-5">
+                    <LiveRun
+                      fixtureEvents={events}
+                      catalog={knownAgentsCatalog()}
+                      defaultCandidateIds={RUN_CANDIDATE_IDS}
+                    />
+                  </div>
+                </section>
+
+                <section className="pt-2">
+                  <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                    <h2 className="font-display text-[1.25rem] leading-tight font-semibold">
+                      Reference rows
+                    </h2>
+                    <p className="font-data text-[10.5px] tracking-[0.1em] text-meta">
+                      FROZEN FIXTURES / NOT A LIVE READ
+                    </p>
+                  </div>
+                  <p className="mb-3 max-w-[46rem] text-[14px] leading-snug text-muted">
+                    The three verdicts the gate can reach, kept on screen as a
+                    reference: cleared, refused on grade, and refused because the
+                    tool surface moved after grading. The run above calls the same
+                    gate against the registered demo agents.
+                  </p>
                   <HiringFloor rows={floor} />
-                  <p className="max-w-[46rem] text-[14px] leading-snug text-muted">
+                  <p className="mt-3 max-w-[46rem] text-[14px] leading-snug text-muted">
                     A letter describes what the target did while it was being
                     tested. A target that detects the test context and behaves
                     during it can still act differently afterwards, which is the
-                    limit the run beside this demonstrates: the agent that turns
-                    hostile is one that cleared the grade floor and was hired.
+                    limit the run above demonstrates: the agent that turns hostile
+                    is one that cleared the grade floor and was hired.
                   </p>
-                </div>
-                <div className="min-w-0">
-                  <div className="rounded-card border border-rule bg-panel">
-                    <p className="border-b border-rule px-4 py-2.5 font-data text-[10.5px] tracking-[0.1em] text-meta">
-                      RUN TRANSCRIPT / runTask()
-                    </p>
-                    <div className="px-4 py-4">
-                      <LiveRun
-                        fixtureEvents={events}
-                        defaultCandidates={RUN_CANDIDATE_IDS.join(" ")}
-                      />
-                    </div>
-                  </div>
-                </div>
+                </section>
               </div>
             </>
           ) : null}
@@ -144,13 +168,26 @@ export default async function ConsolePage({
             <>
               <Head
                 title="Transaction firewall"
-                meta={`${queue.length} CHECKED / FOUR CHECKS, NO FIFTH`}
-                lede="txGuard() forks the chain at the live block and simulates the exact pending call before the wallet signs. The four calls below are staged fixtures and replay a recorded verdict; the unseen slot underneath them calls the real gate against Base mainnet."
+                meta={`${queue.length} RECORDED / FOUR CHECKS, NO FIFTH`}
+                lede="txGuard() forks the chain at the live block and simulates the exact pending call before the wallet signs. Paste an address to run it now; the recorded calls underneath replay a verdict from the same pipeline."
               />
-              <PendingQueue items={queue} />
-              <div className="mt-6">
-                <UnseenSlot />
-              </div>
+              <UnseenSlot />
+              <section className="mt-8">
+                <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                  <h2 className="font-display text-[1.25rem] leading-tight font-semibold">
+                    Recorded calls
+                  </h2>
+                  <p className="font-data text-[10.5px] tracking-[0.1em] text-meta">
+                    STAGED FIXTURES / REPLAYED VERDICT
+                  </p>
+                </div>
+                <p className="mb-3 max-w-[46rem] text-[14px] leading-snug text-muted">
+                  Four calls that were checked earlier, folded to the verdict.
+                  Open one to read the flags, the balance movements, and the
+                  values it can be re-derived from.
+                </p>
+                <PendingQueue items={queue} />
+              </section>
             </>
           ) : null}
 
@@ -175,7 +212,7 @@ export default async function ConsolePage({
             <div className="max-w-[860px]">
               <Head
                 title="Grade an agent"
-                lede="Search Sepolia demos or Base mainnet 8004scan leaders by id. Grade runs against the agent's IdentityRegistry card; ENS claim on Sepolia is optional."
+                lede="Search Sepolia demos and Base mainnet 8004scan leaders by name, registry id, or ENS name. Grade runs against the agent's IdentityRegistry card; the ENS claim on Sepolia is optional."
               />
               <div className="grid gap-8 md:grid-cols-[minmax(0,1fr)_15rem] md:items-start">
                 <SubmitForm

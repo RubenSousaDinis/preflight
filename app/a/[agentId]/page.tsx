@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { Container } from "../../components/container";
+import { agentLabelFor } from "../../lib/agent-display";
 import { ensAppUrl } from "../../lib/ens-app-url";
 import { loadAgentGradePage } from "../../lib/agent-grade-page";
 import { gradeColor } from "../../lib/tokens";
@@ -24,14 +25,25 @@ export default async function AgentGradePage({
   if (!/^[0-9]+$/.test(agentId) || agentId.length > 78) notFound();
 
   const page = await loadAgentGradePage(agentId);
+  const name = agentLabelFor(agentId);
 
   return (
     <main className="min-h-svh bg-paper text-ink">
       <Container className="py-10 pb-16">
         <p className="font-data text-[10.5px] tracking-[0.12em] text-meta">
-          PREFLIGHT / AGENT {agentId}
+          PREFLIGHT / AGENT GRADE
         </p>
-        <h1 className="mt-2 font-display text-[2.4rem] leading-tight font-semibold tracking-[-0.02em]">
+        {/* The name reads first and the id follows it. The id is still the thing
+            the registry is read by, so it stays on the page in the table below. */}
+        <p className="mt-2 font-display text-[1.4rem] leading-tight font-semibold">
+          {name ?? `Agent ${agentId}`}
+          {name !== null ? (
+            <span className="ml-2 font-data text-[0.8rem] font-normal text-meta">
+              id {agentId}
+            </span>
+          ) : null}
+        </p>
+        <h1 className="mt-1 font-display text-[2.4rem] leading-tight font-semibold tracking-[-0.02em]">
           {page.kind === "graded" ? (
             <>
               Grade{" "}
@@ -58,6 +70,7 @@ export default async function AgentGradePage({
         {page.kind === "graded" ? (
           <>
             <dl className="mt-8 max-w-[40rem] divide-y divide-rule border border-rule">
+              <Row label="agent id" value={agentId} mono breakAll />
               <Row label="score" value={`${page.score} / 100`} />
               <Row label="methodology" value={page.methodology} />
               <Row

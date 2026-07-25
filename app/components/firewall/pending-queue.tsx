@@ -3,30 +3,27 @@ import { EmptyState, ErrorState, PulseDots } from "../states";
 import { VerdictCard } from "./verdict-card";
 
 /*
-  Transactions moving through queued, simulating, and decided.
+  The recorded calls, folded.
 
-  The simulating state is on screen for real seconds while a fork is established, so
-  it names the chain and the block it is working against rather than spinning. That
-  state is what the room stares at during the beat, which makes it a designed state
-  and not a placeholder.
+  Each card is most of a screen of evidence, and four of them open at once buried
+  the one control on this view under four screens of replay. So the verdict and the
+  call are the row, and the evidence behind that verdict is one click away.
+
+  `details` rather than state: the fold works before hydration, and every word
+  inside a closed card is still in the document for find-in-page and for a reader
+  that ignores the fold.
 */
 
-function ItemHeader({ item }: { item: QueueItem }) {
-  return (
-    <header className="border-b border-rule bg-band/50 px-4 py-3 sm:px-5">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h3 className="font-display text-[1.05rem] leading-tight font-semibold">
-          {item.label}
-        </h3>
-        <p className="font-data text-[0.66rem] uppercase tracking-[0.14em] text-ink/50">
-          {item.state} / {item.chainLabel}
-        </p>
-      </div>
-      <p className="mt-1 font-data text-[0.72rem] break-all text-ink/55">
-        to {item.tx.to} / value {item.tx.value}
-      </p>
-    </header>
-  );
+function verdictTone(item: QueueItem): string {
+  if (item.state === "failed") return "text-grade-f";
+  if (item.state !== "decided") return "text-ink/55";
+  return item.verdict.verdict === "BLOCK" ? "text-grade-f" : "text-accent";
+}
+
+function verdictWord(item: QueueItem): string {
+  if (item.state === "decided") return item.verdict.verdict;
+  if (item.state === "failed") return "failed";
+  return item.state;
 }
 
 function Body({ item }: { item: QueueItem }) {
@@ -59,42 +56,37 @@ function Body({ item }: { item: QueueItem }) {
   }
 }
 
-/**
- * Every call and its verdict, in one line each.
- *
- * A summary, never a substitute: each entry jumps to the card it summarizes, and
- * the evidence under that card is unchanged. It exists because the four cards are
- * several screens tall, and an operator asked "what did it say to all four" should
- * not have to scroll to answer.
- */
-function QueueIndex({ items }: { items: QueueItem[] }) {
+function QueueCard({ item }: { item: QueueItem }) {
   return (
-    <ul className="mb-4 divide-y divide-rule border border-rule bg-band/40">
-      {items.map((item) => (
-        <li
-          key={item.id}
-          className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-4 py-2 sm:px-5"
-        >
-          <a
-            href={`#call-${item.id}`}
-            className="text-[0.92rem] text-ink no-underline hover:text-accent"
-          >
+    <details
+      id={`call-${item.id}`}
+      className="group scroll-mt-16 border border-rule bg-panel"
+    >
+      <summary className="flex cursor-pointer list-none flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-4 py-3 group-open:border-b group-open:border-rule group-open:bg-band/50 hover:bg-band/40 sm:px-5 [&::-webkit-details-marker]:hidden">
+        <div className="min-w-0">
+          <h3 className="font-display text-[1.05rem] leading-tight font-semibold">
             {item.label}
-          </a>
+          </h3>
+          <p className="mt-0.5 font-data text-[0.7rem] break-all text-ink/45">
+            to {item.tx.to} / value {item.tx.value} / {item.chainLabel}
+          </p>
+        </div>
+        <div className="flex shrink-0 items-baseline gap-3">
           <span
-            className={`font-data text-[0.78rem] tracking-[0.1em] ${
-              item.state === "decided"
-                ? item.verdict.verdict === "BLOCK"
-                  ? "text-grade-f"
-                  : "text-accent"
-                : "text-ink/55"
-            }`}
+            className={`font-data text-[0.85rem] tracking-[0.1em] ${verdictTone(item)}`}
           >
-            {item.state === "decided" ? item.verdict.verdict : item.state}
+            {verdictWord(item)}
           </span>
-        </li>
-      ))}
-    </ul>
+          <span className="font-data text-[0.66rem] tracking-[0.12em] text-ink/45">
+            <span className="group-open:hidden">evidence +</span>
+            <span className="hidden group-open:inline">evidence -</span>
+          </span>
+        </div>
+      </summary>
+      <div className="px-4 py-4 sm:px-5">
+        <Body item={item} />
+      </div>
+    </details>
   );
 }
 
@@ -110,22 +102,12 @@ export function PendingQueue({ items }: { items: QueueItem[] }) {
   }
 
   return (
-    <div>
-      <QueueIndex items={items} />
-      <ol className="space-y-4">
-        {items.map((item) => (
-          <li
-            key={item.id}
-            id={`call-${item.id}`}
-            className="scroll-mt-16 border border-rule bg-panel"
-          >
-            <ItemHeader item={item} />
-            <div className="px-4 py-4 sm:px-5">
-              <Body item={item} />
-            </div>
-          </li>
-        ))}
-      </ol>
-    </div>
+    <ol className="space-y-2">
+      {items.map((item) => (
+        <li key={item.id}>
+          <QueueCard item={item} />
+        </li>
+      ))}
+    </ol>
   );
 }
