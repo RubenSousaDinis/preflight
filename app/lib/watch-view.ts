@@ -13,7 +13,18 @@ export type WatchObservation = {
   agentId: string;
   declaredVersion: string | null;
   fingerprint: string | null;
+  /** Set when any part of the observation failed. Kept for the operator's log. */
   error: string | null;
+  /**
+   * The two channels fail independently, so they are rendered independently.
+   *
+   * Reading only `error` was a fail-open on this surface: the demo target's version
+   * read fails on every poll, so a real fingerprint drift rendered as "could not
+   * check" and the one signal the beat exists to show was hidden behind a caveat
+   * about the other channel.
+   */
+  fingerprintError: string | null;
+  versionError: string | null;
   changed: boolean;
   changeKind: "version" | "fingerprint" | "both" | null;
 };

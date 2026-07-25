@@ -26,34 +26,44 @@ function ObservationRow({
   observation: WatchObservation;
   first: boolean;
 }) {
-  const tone = observation.error
-    ? "text-grade-c"
-    : observation.changed
-      ? "text-grade-f"
+  // Drift outranks a partial failure. A moved fingerprint is the signal this beat
+  // exists to show, and it stays the headline even when the version channel could
+  // not be read; that failure becomes a caveat under it rather than replacing it.
+  const label = observation.changed
+    ? `${observation.changeKind} moved`
+    : observation.fingerprintError !== null
+      ? "could not check the surface"
+      : first
+        ? "baseline"
+        : "no change";
+
+  const tone = observation.changed
+    ? "text-grade-f"
+    : observation.fingerprintError !== null
+      ? "text-grade-c"
       : "text-ink/55";
 
   return (
-    <li className="grid grid-cols-1 gap-x-4 gap-y-1 px-4 py-2 sm:grid-cols-[7rem_minmax(0,1fr)] sm:px-5">
+    <li className="grid grid-cols-1 gap-x-4 gap-y-1 px-4 py-2 sm:grid-cols-[9rem_minmax(0,1fr)] sm:px-5">
       <p className={`font-data text-[0.7rem] uppercase tracking-[0.12em] ${tone}`}>
-        {observation.error
-          ? "could not check"
-          : observation.changed
-            ? `${observation.changeKind} moved`
-            : first
-              ? "baseline"
-              : "no change"}
+        {label}
       </p>
       <div className="min-w-0">
-        {observation.error ? (
-          <p className="text-[0.9rem] leading-snug text-ink">
-            {observation.error}
+        <p className="font-data text-[0.74rem] break-all text-ink/70">
+          version {observation.declaredVersion ?? "unread"} / fingerprint{" "}
+          {observation.fingerprint ?? "unread"}
+        </p>
+        {observation.fingerprintError ? (
+          <p className="mt-1 text-[0.82rem] leading-snug text-ink/70">
+            the surface could not be read, which is not the same as unchanged:{" "}
+            {observation.fingerprintError}
           </p>
-        ) : (
-          <p className="font-data text-[0.74rem] break-all text-ink/70">
-            version {observation.declaredVersion ?? "none declared"} /
-            fingerprint {observation.fingerprint ?? "unreadable"}
+        ) : null}
+        {observation.versionError && !observation.fingerprintError ? (
+          <p className="mt-1 font-data text-[0.7rem] text-ink/50">
+            version channel unread, fingerprint channel is the one reporting
           </p>
-        )}
+        ) : null}
       </div>
     </li>
   );
