@@ -1,34 +1,36 @@
 /**
- * The mark: a fingerprint drawn as a three by three block of bytes.
+ * The mark: a pulse trace.
  *
- * Inline vector, no external asset and no network fetch beyond the font link. The
- * filled cells are fixed rather than generated, which is the point of the subject:
- * the same input draws the same block every time.
+ * A small accent blip, then the full waveform in ink. It reads as a monitor line,
+ * which is the subject: something is being watched before it is trusted. Inline
+ * vector, no external asset and no network fetch beyond the font link.
  */
-const CELLS = [true, false, true, false, true, true, true, true, false];
-
-export function Mark({ size = 18 }: { size?: number }) {
+export function Mark({ width = 34 }: { width?: number }) {
   return (
     <svg
-      viewBox="0 0 20 20"
-      width={size}
-      height={size}
+      width={width}
+      height={Math.round((width * 32) / 60)}
+      viewBox="0 0 60 32"
       aria-hidden="true"
       focusable="false"
-      className="shrink-0"
+      className="block shrink-0"
     >
-      {CELLS.map((filled, index) =>
-        filled ? (
-          <rect
-            key={index}
-            x={(index % 3) * 7}
-            y={Math.floor(index / 3) * 7}
-            width={6}
-            height={6}
-            fill={index === 4 ? "var(--pf-accent)" : "currentColor"}
-          />
-        ) : null,
-      )}
+      <polyline
+        points="2,16 8,16 11,8 14,16"
+        fill="none"
+        stroke="var(--pf-accent)"
+        strokeWidth="2.5"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+      <polyline
+        points="14,16 24,16 29,4 35,28 41,10 46,16 58,16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }

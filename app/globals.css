@@ -18,6 +18,13 @@
   --color-grade-c: var(--pf-grade-c);
   --color-grade-d: var(--pf-grade-d);
   --color-grade-f: var(--pf-grade-f);
+  --color-subtle: var(--pf-subtle);
+  --color-muted: var(--pf-muted);
+  --color-meta: var(--pf-meta);
+  --color-on-dark: var(--pf-on-dark);
+  --color-accent-hover: var(--pf-accent-hover);
+  --radius-control: var(--pf-radius-control);
+  --radius-card: var(--pf-radius-card);
   --font-display: var(--pf-display);
   --font-body: var(--pf-body);
   --font-data: var(--pf-data);
@@ -33,7 +40,7 @@
     background-color: var(--pf-paper);
     color: var(--pf-ink);
     font-family: var(--pf-body);
-    font-size: 15px;
+    font-size: 16px;
     line-height: 1.6;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
