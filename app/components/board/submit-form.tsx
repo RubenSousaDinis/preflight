@@ -1,17 +1,18 @@
 "use client";
 
-import { startTransition, useActionState, useRef } from "react";
+import { startTransition, useActionState, useMemo, useRef, useState } from "react";
+import { filterAgentCatalog } from "../../lib/discover-agents";
 import type { KnownAgentCatalogEntry } from "../../lib/known-agents";
 import { submitAgent, type SubmitResult } from "../../lib/submit";
 import { gradeColor } from "../../lib/tokens";
 import { ErrorState, PulseDots } from "../states";
 
 /*
-  Beat 3's form: known agents by ENS name, then a free-text name field.
+  Beat 3's form: searchable catalog of ENS-mirrored agents, then a free-text name.
 
-  The grading wait is the demo rather than something to hide, so the grading state
-  says what is happening instead of spinning. The server converts the name to an
-  ERC-8004 id via the mirror's preflight.agentId record before grading.
+  The catalog is discovered server-side from the Preflight ENS parent (plus the
+  stage-known set). Search filters that list. Grading still converts the name to
+  an ERC-8004 id via the mirror before resolveAgent runs.
 */
 export function SubmitForm({
   catalog,
@@ -22,13 +23,19 @@ export function SubmitForm({
     SubmitResult | null,
     FormData
   >(submitAgent, null);
+  const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const visible = useMemo(
+    () => filterAgentCatalog(catalog, query),
+    [catalog, query],
+  );
   const placeholder =
     catalog.find((agent) => agent.ensName)?.ensName ??
     "agent8441.preflight.basetest.eth";
 
   function gradeKnown(ensName: string) {
     if (inputRef.current) inputRef.current.value = ensName;
+    setQuery(ensName);
     const data = new FormData();
     data.set("ref", ensName);
     startTransition(() => {
@@ -39,16 +46,31 @@ export function SubmitForm({
   return (
     <div id="submit">
       <div className="mb-5">
-        <p className="font-data text-[0.64rem] uppercase tracking-[0.16em] text-ink/50">
-          known agents
-        </p>
+        <label className="block">
+          <span className="block font-data text-[0.64rem] uppercase tracking-[0.16em] text-ink/50">
+            search known agents
+          </span>
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            autoComplete="off"
+            spellCheck={false}
+            placeholder="ENS name, label, or note"
+            className="mt-1 w-full border border-rule bg-paper px-3 py-2 font-data text-[0.85rem] text-ink outline-none focus:border-accent"
+          />
+        </label>
+
         {catalog.length === 0 || catalog.every((agent) => agent.ensName === null) ? (
           <p className="mt-2 font-data text-[0.8rem] text-ink/55">
             The ENS mirror is not configured, so there are no names to grade by.
           </p>
+        ) : visible.length === 0 ? (
+          <p className="mt-2 font-data text-[0.8rem] text-ink/55">
+            No mirrored agents match {JSON.stringify(query.trim())}.
+          </p>
         ) : (
-          <ul className="mt-2 divide-y divide-rule border border-rule">
-            {catalog.map((agent) =>
+          <ul className="mt-2 max-h-[22rem] divide-y divide-rule overflow-y-auto border border-rule">
+            {visible.map((agent) =>
               agent.ensName === null ? null : (
                 <li key={agent.ensName}>
                   <button
@@ -77,6 +99,10 @@ export function SubmitForm({
             )}
           </ul>
         )}
+        <p className="mt-2 font-data text-[0.68rem] text-ink/45">
+          {visible.length} of {catalog.filter((agent) => agent.ensName).length}{" "}
+          mirrored names
+        </p>
       </div>
 
       <form action={formAction} className="flex flex-wrap items-end gap-3">
