@@ -5,6 +5,7 @@ import type { AgentId, Grade, ValidationRecord } from "@/src/shared";
 import { readValidation } from "@/src/validator/validation-registry";
 import { ensNameIfRegistered } from "./ens";
 import { toRenderableError, type RenderableError } from "./errors";
+import { KNOWN_AGENT_IDS } from "./known-agents";
 
 /**
  * The one registry read module.
@@ -148,17 +149,11 @@ export async function readBoard(agentIds: AgentId[]): Promise<BoardRead> {
  * The demo agents this stage is about when nobody has asked for a different set.
  *
  * The board has no enumeration: a record is found by agent id, so an empty subject
- * list is an empty board even when the registry is full. These four are the ones D1
- * registered and A3b published; they are the ordinary contents of the leaderboard
- * until the URL or the environment asks for something else.
+ * list is an empty board even when the registry is full. These are the known
+ * registered agents (D1 demos plus ENSWhois); they are the ordinary contents of
+ * the leaderboard until the URL or the environment asks for something else.
  */
-export const DEFAULT_BOARD_AGENT_IDS: readonly AgentId[] = [
-  "8427",
-  "8430",
-  "8436",
-  "8437",
-  "8441",
-];
+export const DEFAULT_BOARD_AGENT_IDS: readonly AgentId[] = KNOWN_AGENT_IDS;
 
 /**
  * The subjects the board is about: the URL first, then a configured default, then

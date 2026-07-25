@@ -5,7 +5,7 @@ import { decodeFunctionData, type PublicClient } from 'viem'
 import { ENV } from '../../shared/config.ts'
 import { isPreflightError } from '../../shared/errors.ts'
 import type { Address, Hex } from '../../shared/types.ts'
-import { agentEnsName, labelHashFor, nodeFor, subnameLabelFor } from './names.ts'
+import { agentEnsName, expandAgentEnsName, labelHashFor, nodeFor, subnameLabelFor } from './names.ts'
 import {
   ENS_KEYS,
   EVIDENCE_URI_MAX_CHARS,
@@ -16,6 +16,7 @@ import {
 import {
   ENS_RESOLVER_ABI,
   ZERO_ADDRESS,
+  agentIdForEnsName,
   assembleTextCalls,
   ensureSubname,
   planSubname,
@@ -102,6 +103,25 @@ test('a subname label is derived from the agent id, and nothing else is an agent
   for (const notAnId of ['0xdeadbeef', 'agent8427', 'https://example.com/mcp', '', '84 27']) {
     assert.throws(() => subnameLabelFor(notAnId), /is not an agent id/, `${notAnId} was accepted`)
   }
+})
+
+test('an ENS input expands under the parent, and foreign names are refused', () => {
+  assert.equal(
+    expandAgentEnsName('agent8427', 'preflight.basetest.eth'),
+    'agent8427.preflight.basetest.eth',
+  )
+  assert.equal(
+    expandAgentEnsName('Agent8427.Preflight.Basetest.ETH', 'preflight.basetest.eth'),
+    'agent8427.preflight.basetest.eth',
+  )
+  assert.throws(
+    () => expandAgentEnsName('8427', 'preflight.basetest.eth'),
+    /not an agent ENS label/,
+  )
+  assert.throws(
+    () => expandAgentEnsName('agent8427.other.eth', 'preflight.basetest.eth'),
+    /not a name under/,
+  )
 })
 
 test('a name is normalized before it is hashed, so one name has one node', () => {
@@ -270,6 +290,22 @@ test('a name with no resolver reads as no records at all', async () => {
   const read = await readAgentRecords('8427', { target: TARGET, client })
   assert.equal(read.resolver, null)
   assert.deepEqual(read.records, {})
+})
+
+test('an ENS name converts to the agent id via the mirror text record', async () => {
+  const { client } = fakeChain({
+    resolver: RESOLVER,
+    text: { 'preflight.agentId': '8427' },
+  })
+  const resolved = await agentIdForEnsName('agent8427.preflight.base.eth', {
+    target: TARGET,
+    client,
+  })
+  assert.equal(resolved.agentId, '8427')
+  assert.equal(resolved.name, 'agent8427.preflight.base.eth')
+
+  const fromLabel = await agentIdForEnsName('agent8427', { target: TARGET, client })
+  assert.equal(fromLabel.agentId, '8427')
 })
 
 test('verify reports the keys that disagree with the registry, and only those', async () => {

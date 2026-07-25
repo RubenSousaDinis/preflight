@@ -40,6 +40,41 @@ export function agentEnsName(agentId: AgentId, parent: string): string {
 }
 
 /**
+ * Turns a typed name into the full name under the configured parent.
+ *
+ * Accepts the full name, or just the `agentNNNN` label. Anything else is refused rather than
+ * guessed: a bare number is an ERC-8004 id, not a name, and a foreign TLD is not our mirror.
+ */
+export function expandAgentEnsName(input: string, parent: string): string {
+  const trimmed = input.trim().replace(/^\.+|\.+$/g, '')
+  const trimmedParent = parent.trim().replace(/^\.+|\.+$/g, '')
+  if (trimmed.length === 0) {
+    throw new ConfigError('the ENS name is empty')
+  }
+  if (trimmedParent.length === 0) {
+    throw new ConfigError('the parent name is empty, so no subname can be derived from it')
+  }
+
+  const normalizedParent = normalize(trimmedParent)
+  if (!trimmed.includes('.')) {
+    if (!/^agent[0-9]+$/i.test(trimmed)) {
+      throw new ConfigError(
+        `${JSON.stringify(input)} is not an agent ENS label under ${trimmedParent}`,
+      )
+    }
+    return `${normalize(trimmed)}.${normalizedParent}`
+  }
+
+  const normalized = normalize(trimmed)
+  if (normalized === normalizedParent || !normalized.endsWith(`.${normalizedParent}`)) {
+    throw new ConfigError(
+      `${JSON.stringify(input)} is not a name under ${trimmedParent}, so it is not a Preflight grade mirror`,
+    )
+  }
+  return normalized
+}
+
+/**
  * The namehash of a name, normalized first.
  *
  * Normalization is not cosmetic: `Agent8427.Preflight.base.eth` and its lowercase form hash to
