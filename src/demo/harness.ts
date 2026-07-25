@@ -251,7 +251,7 @@ export async function* runTask(
       kind: 'payment',
       agentId: chosen.agentId,
       amount: fee.toString(),
-      rail: 'hedera-x402',
+      rail: rail.name,
       txRef: payment.txRef,
       stubbed: payment.stubbed,
     } satisfies JsonValue)
@@ -260,7 +260,7 @@ export async function* runTask(
       at: now(),
       agentId: chosen.agentId,
       amount: fee.toString(),
-      rail: 'hedera-x402',
+      rail: rail.name,
       txRef: payment.stubbed ? `${payment.txRef} (stubbed, the rail is not wired)` : payment.txRef,
       receipt: paidReceipt,
     }

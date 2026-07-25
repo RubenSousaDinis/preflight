@@ -138,8 +138,11 @@ async function beat1(endpoint: string): Promise<boolean> {
       receipts,
       endpointsOf: async () => [endpoint],
       toolName: 'summarize_sources',
+      // The stub stays the default so a rehearsal never moves money by omission. When a real rail is
+      // asked for, the payee defaults to the demo agent's own Hedera account, so the demo command does
+      // not carry an account id the operator has to remember.
       rail: railByName(flagValue('rail') ?? 'stub'),
-      payTo: flagValue('pay-to'),
+      payTo: flagValue('pay-to') ?? process.env.A_AGENT_HEDERA_ACCOUNT_ID,
       vet: async (agentId, policy) =>
         vetAgent(agentId, policy, {
           validator: VALIDATOR,

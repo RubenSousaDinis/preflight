@@ -403,7 +403,14 @@ export type HarnessEvent =
       agentId: AgentId
       /** Decimal string in the rail's smallest unit. */
       amount: string
-      rail: 'hedera-x402'
+      /**
+       * Which rail actually settled it.
+       *
+       * Widened from the single x402 literal by arbitration: the event was labelling every payment
+       * `hedera-x402` while a run on the direct-transfer rail settled by a native transfer, and a field
+       * that names the wrong rail on screen is worse than one that names a plainer one.
+       */
+      rail: 'hedera-x402' | 'hedera-transfer' | 'stub'
       /** Transaction id on the payment rail, for the receipt panel. */
       txRef: string
       receipt: Receipt

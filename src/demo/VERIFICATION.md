@@ -179,3 +179,36 @@ the self-hosted facilitator is the remaining half of B3. Two ways to go:
 
 The rail interface means this is a flag at run time, not a rewrite, and the floor is committed either
 way.
+
+## B3, the rail decision and the beat on real settlement, 2026-07-25
+
+**Decided by the operator: `hedera-transfer`.** Real HBAR settlement on Hedera Testnet, waiting for
+consensus. The x402 rail stays implemented and unused: it is a runtime flag, so it costs nothing to keep
+and needs a 402 resource plus a facilitator to switch on. Nothing on stage claims a challenge-response.
+
+```
+payer:                     0.0.9695674 (ECDSA)
+payee:                     0.0.9737723, created for this from the A agent's own key so the fee lands in
+                           an account the demo agent controls rather than back in the client's
+                           create tx 0.0.9695674@1784942230.119772313, funded with 1 HBAR
+env recorded:              A_AGENT_HEDERA_ACCOUNT_ID, locally and in all three Vercel environments
+
+step 1, prove the rail:    settled 0.0.9695674@1784942397.260333239
+                           balance before 937.75423011 HBAR, after 936.75281877
+                           moved 100141134 tinybars, one HBAR plus 141134 in fees
+
+beat 1 on the real rail:   paid 100000000 on hedera-transfer, 0.0.9695674@1784942480.789267915
+                           no "stubbed" label, because nothing was stubbed
+                           injectionCaught, then frozen, then done. One payment, none after the freeze.
+                           receipt chain verified
+payee side:                0.0.9737723 holds 300000000 tinybars across 3 received transactions, so the
+                           fee is visible from the receiving account, not only from ours
+```
+
+### A mislabelled rail, caught by running it
+
+The first real run printed `100000000 on hedera-x402` while the money had moved by native transfer: the
+`paid` event hardcoded the x402 literal, and the frozen type only allowed that one value. A field that
+names the wrong rail on screen is worse than one that names a plainer rail, so the union was widened by
+arbitration and the event now reports whichever rail settled it. The stubbed case says `stub` rather than
+implying a protocol that never ran.

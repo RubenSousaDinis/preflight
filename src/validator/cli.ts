@@ -319,6 +319,20 @@ async function setCard(agentId: string, chainId: number): Promise<boolean> {
   const receipt = await reader.waitForTransactionReceipt({ hash })
   console.log(`\nlanded        ${hash} (${receipt.status})`)
   if (receipt.status !== 'success') return false
+  if (registering) {
+    // The registry is an ERC-721, so the new id arrives as the tokenId of the mint. Printing the hash
+    // alone would leave the caller holding a transaction and no way to name what it created.
+    const { decodeEventLog, parseAbiItem } = await import('viem')
+    const transfer = parseAbiItem('event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)')
+    for (const log of receipt.logs) {
+      try {
+        const decoded = decodeEventLog({ abi: [transfer], topics: log.topics, data: log.data })
+        console.log(`agent id      ${(decoded.args as { tokenId: bigint }).tokenId.toString()}`)
+      } catch {
+        // Not the mint log. Nothing to report for it.
+      }
+    }
+  }
   if (!registering) {
     // Confirm by resolving it: a send receipt is not evidence that the card reads back.
     const resolved = await resolveAgentDetailed(agentId, { chainId })

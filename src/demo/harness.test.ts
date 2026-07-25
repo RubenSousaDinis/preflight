@@ -303,7 +303,7 @@ test('a payment while the rail is stubbed is labelled, never omitted', async () 
   const paid = events.find((event) => event.type === 'paid')
   assert.ok(paid?.type === 'paid')
   assert.match(paid.txRef, /stubbed, the rail is not wired/)
-  assert.equal(paid.rail, 'hedera-x402')
+  assert.equal(paid.rail, 'stub', 'the event names the rail that settled it, not the one we hope to use')
 })
 
 test('a fresh run starts a fresh chain, so a second rehearsal does not continue the first', async () => {
