@@ -78,7 +78,10 @@ function ObservationRow({
 function ClientCard({ client }: { client: ClientVerdict }) {
   const refused = client.verdict === "REFUSE";
   return (
-    <li className="border border-rule bg-panel px-3 py-3">
+    // min-w-0 because a grid item defaults to a minimum of its own content, and the
+    // reason below carries a 42 character address. Without it the four columns are
+    // sized by that address rather than by the space available.
+    <li className="min-w-0 border border-rule bg-panel px-3 py-3">
       <div className="flex items-baseline justify-between gap-2">
         <p className="font-data text-[0.66rem] uppercase tracking-[0.14em] text-ink/50">
           {client.client}
@@ -99,7 +102,12 @@ function ClientCard({ client }: { client: ClientVerdict }) {
       >
         {client.verdict}
       </p>
-      <p className="mt-2 text-[0.82rem] leading-snug text-ink/70">
+      {/*
+        The reason is a sentence with an address inside it, and an address is one
+        unbreakable word wider than this column. wrap-anywhere rather than break-all
+        so the ordinary words still break at spaces and only the hex splits.
+      */}
+      <p className="mt-2 text-[0.82rem] leading-snug wrap-anywhere text-ink/70">
         {client.reason}
       </p>
     </li>
