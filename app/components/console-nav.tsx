@@ -11,6 +11,7 @@ const STOPS = [
   { href: "#beat-1-run", label: "1 run" },
   { href: "#beat-2", label: "2 firewall" },
   { href: "#beat-3", label: "3 board" },
+  { href: "#beat-4", label: "4 rug pull" },
   { href: "#audit-trail", label: "receipts" },
 ];
 

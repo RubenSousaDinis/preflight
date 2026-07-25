@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { ConsoleNav } from "../components/console-nav";
 import { Container } from "../components/container";
+import { BoardRefresh } from "../components/board/board-refresh";
 import { Leaderboard } from "../components/board/leaderboard";
 import { SubmitForm } from "../components/board/submit-form";
 import { SubmitQr } from "../components/board/submit-qr";
@@ -9,11 +10,14 @@ import { UnseenSlot } from "../components/firewall/unseen-slot";
 import { DemoTargetLine } from "../components/floor/demo-target-line";
 import { HiringFloor } from "../components/floor/hiring-floor";
 import { Panel } from "../components/panel";
+import { MirrorLine } from "../components/receipts/mirror-line";
 import { ReceiptChain } from "../components/receipts/receipt-chain";
+import { RugPull } from "../components/watch/rug-pull";
 import { LiveRun } from "../components/transcript/live-run";
 import { loadFirewallQueue } from "../lib/firewall";
 import { FLOOR_POLICY, loadFloor } from "../lib/floor";
 import { readDemoTarget } from "../lib/demo-target";
+import { readMirrorStatus } from "../lib/hcs";
 import { loadReceipts } from "../lib/receipts";
 import { boardSubjects, readBoard } from "../lib/registry";
 import { loadTranscript } from "../lib/transcript";
@@ -35,12 +39,13 @@ export default async function ConsolePage({
   searchParams: Promise<{ agents?: string }>;
 }) {
   const { agents } = await searchParams;
-  const [rows, events, queue, receipts, board, demoTarget] = await Promise.all([
+  const [rows, events, queue, receipts, board, mirror, demoTarget] = await Promise.all([
     loadFloor(),
     loadTranscript(),
     loadFirewallQueue(),
     loadReceipts(),
     readBoard(boardSubjects(agents)),
+    readMirrorStatus(),
     readDemoTarget(),
   ]);
   return (
@@ -126,6 +131,9 @@ export default async function ConsolePage({
           status={`${board.entries.length} listed`}
         >
           <Leaderboard board={board} />
+          <div className="mt-3">
+            <BoardRefresh />
+          </div>
           <div className="mt-6 grid gap-6 md:grid-cols-[minmax(0,1fr)_15rem] md:items-start">
             <div>
               <h3 className="font-display text-[1.1rem] font-semibold">
@@ -145,6 +153,20 @@ export default async function ConsolePage({
         </Panel>
 
         <Panel
+          id="beat-4"
+          eyebrow="beat 4"
+          title="The rug pull"
+          status="driven live"
+        >
+          <p className="mb-4 max-w-[46rem] text-[0.92rem] leading-snug text-ink/75">
+            A graded agent ships an update. The watcher notices the tool surface
+            move, and every client drops it without being told. Flip the demo
+            target to drifted while this is running to see it happen.
+          </p>
+          <RugPull defaultAgentId={boardSubjects(agents)[0] ?? ""} />
+        </Panel>
+
+        <Panel
           id="audit-trail"
           eyebrow="audit trail"
           title="Receipts, the reference chain"
@@ -158,6 +180,9 @@ export default async function ConsolePage({
             answers.
           </p>
           <ReceiptChain log={receipts} />
+          <div className="mt-4">
+            <MirrorLine status={mirror} />
+          </div>
         </Panel>
       </div>
     </Container>
