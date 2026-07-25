@@ -1,7 +1,7 @@
 "use client";
 
 import { startTransition, useActionState, useMemo, useRef, useState } from "react";
-import { filterAgentCatalog } from "../../lib/discover-agents";
+import { filterAgentCatalog } from "../../lib/filter-agent-catalog";
 import type { KnownAgentCatalogEntry } from "../../lib/known-agents";
 import {
   claimAgent,
