@@ -170,7 +170,8 @@ So if D1's demo agents declare https endpoints (E1 on a deploy URL), the hired a
    agent grades F and is blocked, the clean agent grades B and is hired, the drifted agent is
    refused on its fingerprint regardless of letter. The caveat becomes part of the pitch: a remote
    target's egress and canary behavior cannot be verified, and we say so on screen instead of
-   showing an A we did not earn.
+   showing an A we did not earn. **Taken 2026-07-25:** spoken and rendered copy now says "grade
+   floor, B or above"; `02-DECISIONS` §8/§10 carry dated amendments.
 2. **Ship E1 as an npm package and grade it over stdio under Docker**, where C-02 and C-03 both run
    and A is reachable. Costs packaging work, a Docker daemon on the stage machine, and an agent card
    whose declared surface is a package ref rather than a URL, which A2's extraction and D1's cards
