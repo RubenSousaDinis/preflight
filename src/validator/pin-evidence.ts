@@ -164,7 +164,18 @@ export async function fetchPublishedEvidence(
   uri: string,
   options: FetchEvidenceOptions = {},
 ): Promise<string> {
-  return readPublished(uri, options)
+  const key = uri.trim()
+  // A data URI decodes in process and costs a gateway nothing, so only a fetched one is shared.
+  if (key.startsWith('data:')) return readPublished(uri, options)
+
+  const open = inFlight.get(key)
+  if (open !== undefined) return open
+
+  const started = readPublished(uri, options).finally(() => {
+    inFlight.delete(key)
+  })
+  inFlight.set(key, started)
+  return started
 }
 
 export interface FetchEvidenceOptions {
@@ -186,8 +197,38 @@ export interface FetchEvidenceOptions {
  * as one. When the attempts run out the read throws and the gate refuses, so waiting never becomes
  * permission.
  */
-export const EVIDENCE_FETCH_ATTEMPTS = 3
+export const EVIDENCE_FETCH_ATTEMPTS = 5
 export const EVIDENCE_RETRY_BASE_MS = 300
+
+/**
+ * Backoff for attempt n, spread so that readers who did stumble together do not return together.
+ *
+ * Without the spread every client on a poll waits the same 300ms and asks again in the same
+ * millisecond, which is the burst that produced the failure in the first place.
+ */
+function backoffFor(attempt: number, base: number): number {
+  if (base === 0) return 0
+  const step = base * 2 ** attempt
+  return step + Math.floor(Math.random() * base)
+}
+
+/**
+ * Readers arriving on one URI while a fetch is open share that fetch.
+ *
+ * In flight only, never a cache: the entry is dropped the moment it settles, so nothing here can
+ * serve a stale document or hide a gateway that has started failing. Each client still hashes the
+ * bytes against the record itself, which is the check a verdict rests on. What is shared is one GET
+ * of an immutable, content addressed document, at one instant, inside one process.
+ *
+ * Measured against production on 2026-07-25 with three watch streams open: four clients per poll
+ * meant four concurrent reads of the same URI, and this gateway answers 600 to about half of eight
+ * concurrent requests. Sharing turns each poll's four chances to trip it back into one.
+ *
+ * A reader that joins an open fetch gets the first reader's timeout and backoff rather than its own,
+ * which is worth knowing before someone passes a shorter one and wonders why it was not honoured.
+ * The map is per process, so it shares within one instance and never across them.
+ */
+const inFlight = new Map<string, Promise<string>>()
 
 /**
  * Which statuses are worth asking about twice.
@@ -236,7 +277,7 @@ async function readPublished(uri: string, options: FetchEvidenceOptions): Promis
       // gateway sees it is the likelier one. The last attempt rethrows, so a real outage still ends
       // the read rather than being retried out of existence.
       if (isLast) throw err
-      await new Promise((resolve) => setTimeout(resolve, backoff * 2 ** attempt))
+      await new Promise((resolve) => setTimeout(resolve, backoffFor(attempt, backoff)))
       continue
     }
     if (response.ok) return response.text()
@@ -244,7 +285,7 @@ async function readPublished(uri: string, options: FetchEvidenceOptions): Promis
     lastStatus = response.status
     if (!statusCanChange(response.status)) break
     if (!isLast) {
-      await new Promise((resolve) => setTimeout(resolve, backoff * 2 ** attempt))
+      await new Promise((resolve) => setTimeout(resolve, backoffFor(attempt, backoff)))
     }
   }
 

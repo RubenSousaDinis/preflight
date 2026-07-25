@@ -402,8 +402,23 @@ export const LOG_CHUNK_BLOCKS = 900n
  * Bounded on purpose: the retries run out, and when they do the read throws and the gate refuses.
  * There is no path here where waiting long enough turns into permission.
  */
-export const RPC_RETRY_ATTEMPTS = 4
+export const RPC_RETRY_ATTEMPTS = 6
 export const RPC_RETRY_BASE_MS = 400
+/** Past this, doubling only parks the poll. The attempts, not the interval, are what widen the wait. */
+export const RPC_RETRY_MAX_STEP_MS = 2_000
+
+/**
+ * Backoff for attempt n, spread so that clients throttled together do not return together.
+ *
+ * Measured on 2026-07-26 with five watch streams open at once, which is twenty clients reading the
+ * registry on one poll: the throttled ones all waited the same 400ms and asked again in the same
+ * millisecond, so the limiter saw the same burst that had just been refused, and eighteen verdicts
+ * came back as failed reads. The spread is what turns a synchronized retry into a queue.
+ */
+function backoffFor(attempt: number, base: number): number {
+  if (base === 0) return 0
+  return Math.min(base * 2 ** attempt, RPC_RETRY_MAX_STEP_MS) + Math.floor(Math.random() * base)
+}
 
 /**
  * viem retries -1, -32005, -32603 and 429, and this endpoint throttles with -32002, which is not on
@@ -451,7 +466,7 @@ async function withThrottleRetry<T>(
       return await call()
     } catch (err) {
       if (!isThrottle(err) || attempt >= RPC_RETRY_ATTEMPTS) throw err
-      await pause(base * 2 ** attempt)
+      await pause(backoffFor(attempt, base))
     }
   }
 }

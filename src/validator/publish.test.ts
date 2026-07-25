@@ -717,3 +717,94 @@ test('a status that will not change is not retried', async () => {
   )
   assert.equal(gateway.calls(), 1, 'a 403 is an answer about access, so it is not asked again')
 })
+
+// --- what four clients reading one document at one instant should cost ------
+
+/*
+  Measured against production on 2026-07-25 with three watch streams open: 143 hires and one
+  refusal, the refusal being this gateway answering 600 to all three attempts. It answers 600 to
+  roughly half of eight concurrent requests, and every client on a poll reads the same URI at the
+  same instant, so the four of them were four chances to trip it rather than one.
+
+  Coalescing is in-flight only, never a cache: a second reader arriving while a fetch is open shares
+  that fetch, and once it settles the entry is gone. Each client still hashes the bytes and checks
+  them against the record itself, which is the check that decides a verdict; what is shared is one
+  GET of an immutable, content addressed document, in the same instant, inside one process.
+*/
+test('readers arriving together on one URI share one fetch', async () => {
+  const bundle = JSON.stringify({ schema: 'preflight-evidence-v1' })
+  let calls = 0
+  let release: (() => void) | null = null
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const slow = (async () => {
+    calls += 1
+    await gate
+    return { ok: true, status: 200, text: async () => bundle }
+  }) as unknown as typeof fetch
+
+  const both = Promise.all([
+    fetchPublishedEvidence('https://evidence.example/same', { fetchImpl: slow, timeoutMs: 1_000 }),
+    fetchPublishedEvidence('https://evidence.example/same', { fetchImpl: slow, timeoutMs: 1_000 }),
+  ])
+  release!()
+  const [first, second] = await both
+
+  assert.equal(first, bundle)
+  assert.equal(second, bundle)
+  assert.equal(calls, 1, 'two readers at one instant cost the gateway one request')
+})
+
+test('two URIs are two fetches, and a settled one is not reused', async () => {
+  const bundle = JSON.stringify({ schema: 'preflight-evidence-v1' })
+  let calls = 0
+  const counting = (async () => {
+    calls += 1
+    return { ok: true, status: 200, text: async () => bundle }
+  }) as unknown as typeof fetch
+
+  await Promise.all([
+    fetchPublishedEvidence('https://evidence.example/a', { fetchImpl: counting, timeoutMs: 1_000 }),
+    fetchPublishedEvidence('https://evidence.example/b', { fetchImpl: counting, timeoutMs: 1_000 }),
+  ])
+  assert.equal(calls, 2, 'different documents are different fetches')
+
+  // Nothing is held after the fetch settles: this is not a cache, so the next read is a real read.
+  await fetchPublishedEvidence('https://evidence.example/a', { fetchImpl: counting, timeoutMs: 1_000 })
+  assert.equal(calls, 3)
+})
+
+test('a failure is shared by everyone waiting on it, and refuses them all', async () => {
+  const down = (async () => ({ ok: false, status: 600, text: async () => 'down' })) as unknown as typeof fetch
+
+  const results = await Promise.allSettled([
+    fetchPublishedEvidence('https://evidence.example/down', {
+      fetchImpl: down,
+      retryDelayMs: 0,
+      timeoutMs: 1_000,
+    }),
+    fetchPublishedEvidence('https://evidence.example/down', {
+      fetchImpl: down,
+      retryDelayMs: 0,
+      timeoutMs: 1_000,
+    }),
+  ])
+  for (const result of results) {
+    assert.equal(result.status, 'rejected')
+    assert.ok(result.reason instanceof PublishError)
+  }
+})
+
+test('a gateway that stumbles four times running is still read', async () => {
+  const bundle = JSON.stringify({ schema: 'preflight-evidence-v1' })
+  const gateway = respondingWith([600, 600, 404, 600, 200], bundle)
+
+  const text = await fetchPublishedEvidence('https://evidence.example/persistent', {
+    fetchImpl: gateway.impl,
+    retryDelayMs: 0,
+    timeoutMs: 1_000,
+  })
+  assert.equal(text, bundle)
+  assert.equal(gateway.calls(), 5, 'four stumbles is inside the bound, because this one answers 600 half the time')
+})
