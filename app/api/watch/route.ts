@@ -21,24 +21,26 @@ const POLL_MS = 4_000;
 const MAX_MS = 240_000;
 
 /*
-  How many clients re-run the gate each poll, and why the default is one.
+  How many clients re-run the gate each poll.
 
-  Measured against the event RPC on Base Sepolia: one vetAgent call takes about
-  twenty one seconds and returns HIRE. Four run concurrently and three of them come
-  back "the validation registry could not be read", because the registry read is
-  several RPC calls and the endpoint rate limits a burst. Staggering them two and a
-  half seconds apart does not help. Four run sequentially and all four succeed, at
-  eighty four seconds a round, which is not a beat.
+  This was one. Measured against the event RPC on Base Sepolia, one vetAgent call took
+  about twenty one seconds, and four run concurrently came back three refusals reading
+  "the validation registry could not be read", because the endpoint rate limited the
+  burst. A screen showing three clients failing on throttling reports the RPC, not the
+  propagation, so the fan-out was cut to one.
 
-  So the honest fan-out on this endpoint is one. A screen showing four clients where
-  three failed on throttling would be reporting the RPC, not the propagation, and a
-  refusal caused by a rate limit is a true refusal about the wrong thing.
+  What made the read expensive was the reader, not the chain: it walked a 90,000 block
+  lookback in 900 block windows, a hundred calls, and that is what saturated the
+  limiter. The window is now asked for wide (see LOG_WINDOW_LADDER), and re-measured
+  on 2026-07-25 against the same endpoint one call takes 2.7 seconds and four
+  concurrent clients all return HIRE in 2.6 seconds, none of them throttled.
 
-  Raise PREFLIGHT_WATCH_CLIENTS once the endpoint allows it: the clients already run
-  concurrently and render together, so nothing but this number changes.
+  So the fan-out is four, which is what the beat needs: simultaneity is the claim, and
+  one client cannot show it. A throttle that does happen is now retried inside the read
+  rather than rendered as a verdict about an agent.
 */
 function clientNames(): string[] {
-  const raw = Number(process.env.PREFLIGHT_WATCH_CLIENTS ?? "1");
+  const raw = Number(process.env.PREFLIGHT_WATCH_CLIENTS ?? "4");
   const count = Number.isInteger(raw) ? Math.min(Math.max(raw, 1), 4) : 1;
   return Array.from({ length: count }, (_unused, index) => `client-${index + 1}`);
 }

@@ -162,15 +162,39 @@ export async function verifyPublishedEvidence(
  */
 export async function fetchPublishedEvidence(
   uri: string,
-  options: { fetchImpl?: typeof fetch; timeoutMs?: number } = {},
+  options: FetchEvidenceOptions = {},
 ): Promise<string> {
   return readPublished(uri, options)
 }
 
-async function readPublished(
-  uri: string,
-  options: { fetchImpl?: typeof fetch; timeoutMs?: number },
-): Promise<string> {
+export interface FetchEvidenceOptions {
+  fetchImpl?: typeof fetch
+  timeoutMs?: number
+  /** Backoff between attempts at a gateway that is busy. Zero in tests, so they do not sleep. */
+  retryDelayMs?: number
+}
+
+/**
+ * How many times a busy gateway is asked again, and why it is asked at all.
+ *
+ * Measured against the 0G indexer on 2026-07-25: four concurrent fetches of one evidence URI came
+ * back 600, 600, 200, 200, and the 600 body was an internal "failed to download segment 0". Every
+ * client on the rug pull beat reads the same URI at the same instant, so without this the gate
+ * refuses an agent whose evidence is sitting there and readable a second later.
+ *
+ * Bounded, and only for statuses that can change: a 404 is an answer about the document and is taken
+ * as one. When the attempts run out the read throws and the gate refuses, so waiting never becomes
+ * permission.
+ */
+export const EVIDENCE_FETCH_ATTEMPTS = 3
+export const EVIDENCE_RETRY_BASE_MS = 300
+
+/** 5xx is the server saying it failed; 600 is the 0G gateway saying the same thing off the RFC scale. */
+function statusCanChange(status: number): boolean {
+  return status >= 500 || status === 408 || status === 429
+}
+
+async function readPublished(uri: string, options: FetchEvidenceOptions): Promise<string> {
   const trimmed = uri.trim()
   if (trimmed.startsWith('data:')) {
     const comma = trimmed.indexOf(',')
@@ -185,13 +209,23 @@ async function readPublished(
     throw new PublishError(`the published URI scheme is not one this reader fetches: ${trimmed.slice(0, 40)}`)
   }
   const transport = options.fetchImpl ?? fetch
-  const response = await transport(trimmed, {
-    signal: AbortSignal.timeout(options.timeoutMs ?? 15_000),
-  })
-  if (!response.ok) {
-    throw new PublishError(`the published evidence at ${trimmed} answered HTTP ${response.status}`, {
-      retryable: response.status >= 500,
+  const backoff = options.retryDelayMs ?? EVIDENCE_RETRY_BASE_MS
+
+  let lastStatus = 0
+  for (let attempt = 0; attempt < EVIDENCE_FETCH_ATTEMPTS; attempt += 1) {
+    const response = await transport(trimmed, {
+      signal: AbortSignal.timeout(options.timeoutMs ?? 15_000),
     })
+    if (response.ok) return response.text()
+
+    lastStatus = response.status
+    if (!statusCanChange(response.status)) break
+    if (attempt < EVIDENCE_FETCH_ATTEMPTS - 1) {
+      await new Promise((resolve) => setTimeout(resolve, backoff * 2 ** attempt))
+    }
   }
-  return response.text()
+
+  throw new PublishError(`the published evidence at ${trimmed} answered HTTP ${lastStatus}`, {
+    retryable: statusCanChange(lastStatus),
+  })
 }
