@@ -1,7 +1,15 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { ConfigError, PreflightError, isPreflightError, reasonOf, AgentResolveError } from './errors.ts'
+import {
+  ConfigError,
+  PreflightError,
+  REASON_MAX_LENGTH,
+  isPreflightError,
+  oneLineReason,
+  reasonOf,
+  AgentResolveError,
+} from './errors.ts'
 import { GRADES, gradeForScore, meetsMinGrade, scoreForGrade } from './grade.ts'
 import {
   CHAINS,
@@ -91,6 +99,28 @@ test('reasonOf always returns something renderable', () => {
   assert.equal(reasonOf('string failure'), 'string failure')
   assert.equal(reasonOf(undefined), 'unknown failure')
   assert.equal(reasonOf(new Error('')), 'unknown failure')
+})
+
+/*
+  A dead endpoint answers a JSON-RPC POST with an HTML error page, and the transport carries that
+  page through as the message. It reaches a panel, so it arrives as one line of text and nothing else.
+*/
+test('oneLineReason flattens a transport failure into something a panel can hold', () => {
+  const html =
+    'Streamable HTTP error: Error POSTing to endpoint: <!DOCTYPE html>\n<html lang="en">\n<body>\n<pre>Cannot POST /mcp/agent</pre>\n</body>\n</html>\n'
+  const line = oneLineReason(new Error(html))
+  assert.doesNotMatch(line, /[<>]/)
+  assert.doesNotMatch(line, /\n/)
+  assert.match(line, /Cannot POST \/mcp\/agent/)
+
+  const long = oneLineReason(new Error('x'.repeat(500)))
+  assert.equal(long.length, REASON_MAX_LENGTH)
+  assert.ok(long.endsWith('...'))
+
+  // The one-liner keeps reasonOf's guarantee: never empty, whatever it was handed.
+  assert.equal(oneLineReason(new Error('   ')), 'unknown failure')
+  assert.equal(oneLineReason(undefined), 'unknown failure')
+  assert.equal(oneLineReason(new AgentResolveError('unreachable card')), 'unreachable card')
 })
 
 // --- the per-chain configuration surface -----------------------------------

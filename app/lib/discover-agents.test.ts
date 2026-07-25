@@ -24,8 +24,8 @@ const CATALOG: KnownAgentCatalogEntry[] = [
     source: "sepolia-demo",
   },
   {
-    id: "2290",
-    label: "Clawdia",
+    id: "22335",
+    label: "erni",
     note: "8004scan Base leader, MCP",
     ensName: null,
     identityChainId: 8453,
@@ -40,12 +40,12 @@ test("an empty query keeps the whole catalog", () => {
 
 test("search matches id, ENS name, label, note, and 8004scan source", () => {
   assert.deepEqual(
-    filterAgentCatalog(CATALOG, "clawdia").map((agent) => agent.id),
-    ["2290"],
+    filterAgentCatalog(CATALOG, "erni").map((agent) => agent.id),
+    ["22335"],
   );
   assert.deepEqual(
     filterAgentCatalog(CATALOG, "8004scan").map((agent) => agent.id),
-    ["2290"],
+    ["22335"],
   );
   assert.deepEqual(
     filterAgentCatalog(CATALOG, "8441").map((agent) => agent.id),
@@ -53,7 +53,17 @@ test("search matches id, ENS name, label, note, and 8004scan source", () => {
   );
 });
 
-test("curated Base leaders include Clawdia", () => {
-  assert.ok(CURATED_BASE_LEADERS.some((agent) => agent.id === "2290"));
+/*
+  The catalog is what the console offers, so membership is a claim that a run reaches a
+  letter. These four were checked on 2026-07-25 and cannot: two cards do not resolve,
+  and two endpoints answer 404. Any of them can still be graded by typing the id, which
+  is where the reason belongs.
+*/
+test("curated Base leaders exclude ids that were checked and could not be graded", () => {
+  const ids = CURATED_BASE_LEADERS.map((agent) => agent.id);
+  for (const ungradable of ["2290", "32214", "19506", "22524"]) {
+    assert.ok(!ids.includes(ungradable), `${ungradable} cannot be graded`);
+  }
   assert.ok(CURATED_BASE_LEADERS.length >= 5);
+  assert.equal(new Set(ids).size, ids.length);
 });

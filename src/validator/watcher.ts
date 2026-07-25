@@ -14,7 +14,7 @@
  * that reads as reassurance is the failure this project exists to name.
  */
 
-import { reasonOf } from '../shared/errors.ts'
+import { oneLineReason } from '../shared/errors.ts'
 import type { AgentId, Grade, GradeResult, Hex } from '../shared/types.ts'
 import { liveFingerprint } from '../gates/vet/live-fingerprint.ts'
 import { openWorker } from '../demo/mcp-call.ts'
@@ -116,7 +116,7 @@ export class AgentWatcher {
         declaredVersion = seen.declaredVersion
         fingerprint = seen.fingerprint
       } catch (err) {
-        fingerprintError = reasonOf(err)
+        fingerprintError = oneLineReason(err)
         versionError = fingerprintError
       }
     } else {
@@ -128,7 +128,7 @@ export class AgentWatcher {
         try {
           card = await resolveAgent(this.agentId, this.#options.resolve)
         } catch (err) {
-          fingerprintError = reasonOf(err)
+          fingerprintError = oneLineReason(err)
           versionError = fingerprintError
         }
       }
@@ -140,7 +140,7 @@ export class AgentWatcher {
               ? await this.#options.observeFingerprint(this.agentId)
               : await liveFingerprint(card!.mcpEndpoints)
         } catch (err) {
-          fingerprintError = reasonOf(err)
+          fingerprintError = oneLineReason(err)
         }
 
         try {
@@ -159,7 +159,7 @@ export class AgentWatcher {
             }
           }
         } catch (err) {
-          versionError = reasonOf(err)
+          versionError = oneLineReason(err)
         }
       }
     }
@@ -230,7 +230,7 @@ export class AgentWatcher {
         this.#state.observations.push({
           ...observation,
           at: now(),
-          error: `the re-grade did not complete: ${reasonOf(err)}`,
+          error: `the re-grade did not complete: ${oneLineReason(err)}`,
           fingerprintError,
           versionError,
           changed: false,

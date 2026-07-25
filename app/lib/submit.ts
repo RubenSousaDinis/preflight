@@ -100,7 +100,7 @@ export async function submitAgent(
     return {
       kind: "invalid",
       message:
-        "That looks like a URL or package reference. This form grades a registered ERC-8004 agent id (for example 2290 or 8441), not an MCP endpoint.",
+        "That looks like a URL or package reference. This form grades a registered ERC-8004 agent id (for example 22332 or 8441), not an MCP endpoint.",
     };
   }
 
