@@ -181,7 +181,18 @@ async function publish(agentId: string, chainId: number): Promise<boolean> {
  * The re-grade is the engine's, and the letter that comes back is whatever the new surface earns. The
  * publish step stays the operator's, so this prints the grade rather than sending anything.
  */
-async function watch(endpoint: string): Promise<boolean> {
+async function watch(target: string): Promise<boolean> {
+  // An agent id watches the agent: the card is re-resolved every poll, so a target that changes where it
+  // points is a change like any other. A URL watches that URL directly, which is the rehearsal form.
+  const isAgentId = /^[0-9]+$/.test(target.trim())
+  const endpoint = isAgentId
+    ? (await resolveAgentDetailed(target, { chainId: identityChainId() })).card.mcpEndpoints[0]
+    : target
+  if (endpoint === undefined) {
+    console.log(`agent ${target} declares no endpoint to watch`)
+    return false
+  }
+  if (isAgentId) console.log(`watching agent ${target} at ${endpoint}`)
   const intervalMs = Number(flagValue('interval') ?? 5_000)
   const rounds = Number(flagValue('rounds') ?? 6)
   const flipAt = Number(flagValue('flip-at') ?? 2)
@@ -189,18 +200,26 @@ async function watch(endpoint: string): Promise<boolean> {
   const token = process.env.DEMO_CONTROL_TOKEN?.trim()
 
   console.log(`grading ${endpoint} once, to establish what the watcher is watching …`)
-  const baseline = await gradeAgent(cardForEndpoint(endpoint))
+  const baseline = await gradeAgent(
+    isAgentId ? (await resolveAgentDetailed(target, { chainId: identityChainId() })).card : cardForEndpoint(endpoint),
+  )
   console.log(`  baseline grade ${baseline.grade}, fingerprint ${baseline.toolFingerprint.slice(0, 18)}…`)
   console.log(`polling every ${intervalMs}ms for ${rounds} rounds, flipping to ${flipTo} at round ${flipAt}\n`)
 
   const regraded: string[] = []
   const watcher = new AgentWatcher(endpoint, {
     intervalMs,
-    observe: async () => ({
-      declaredVersion: (await openWorker(endpoint)).serverVersion,
-      fingerprint: await liveFingerprint([endpoint]),
-    }),
-    regrade: async () => gradeAgent(cardForEndpoint(endpoint)),
+    observeFingerprint: async () => {
+      const current = isAgentId
+        ? (await resolveAgentDetailed(target, { chainId: identityChainId() })).card.mcpEndpoints[0]!
+        : endpoint
+      return liveFingerprint([current])
+    },
+    observeVersion: async () => (await openWorker(endpoint)).serverVersion,
+    regrade: async () =>
+      gradeAgent(
+        isAgentId ? (await resolveAgentDetailed(target, { chainId: identityChainId() })).card : cardForEndpoint(endpoint),
+      ),
     onObservation: (observation) => {
       const state =
         observation.error !== null
@@ -219,7 +238,30 @@ async function watch(endpoint: string): Promise<boolean> {
   })
 
   for (let round = 1; round <= rounds; round += 1) {
-    if (round === flipAt && token !== undefined) {
+    if (round === flipAt && flagValue('flip-card') !== undefined && isAgentId) {
+      // Beat 4's update, done the way that survives serverless: the agent re-points its own card at a
+      // surface named in the URL. The fingerprint moves because the endpoint is part of it, and the
+      // re-grade that follows reads that surface reliably rather than whichever one an instance happens
+      // to hold. A control-endpoint flip is fine for a single call and unreliable across a whole grade.
+      const surface = flagValue('flip-card')
+      const base = endpoint.split('?')[0]
+      const { buildAgentCard } = await import('./identity-registry.ts')
+      const { dataUri } = buildAgentCard({ name: `preflight-demo-${target}`, endpoint: `${base}?surface=${surface}` })
+      const key = requireEnv(ENV.validatorPrivateKey, 'writing an agent card')
+      const account = privateKeyToAccount(key as `0x${string}`)
+      const wallet = createWalletClient({ account, transport: http(rpcUrlFor(identityChainId())) })
+      const reader = publicClientFor(identityChainId())
+      const hash = await wallet.writeContract({
+        address: identityRegistryFor(identityChainId()),
+        abi: IDENTITY_REGISTRY_ABI,
+        functionName: 'setAgentURI',
+        args: [BigInt(target), dataUri],
+        account,
+        chain: null,
+      })
+      await reader.waitForTransactionReceipt({ hash })
+      console.log(`  -- the agent shipped an update: its card now points at ?surface=${surface} --`)
+    } else if (round === flipAt && token !== undefined) {
       const bump = flagValue('bump-version')
       const response = await fetch(endpoint.replace(/\/mcp$/, '/variant'), {
         method: 'POST',
@@ -446,7 +488,7 @@ async function main(): Promise<void> {
       '  cli.ts publish <agentId> [--pin zerog|data] [--send] [--request-exists]',
       '  cli.ts read-validation <agentId> [--validator <address>]',
       '  cli.ts verify-evidence <uri> <expectedHash>',
-      '  cli.ts watch <mcp url> [--interval 5000] [--rounds 6] [--flip-at 2] [--flip-to drifted] [--bump-version 1.1.0]',
+      '  cli.ts watch <agentId|mcp url> [--interval 5000] [--rounds 6] [--flip-at 2] [--flip-to drifted|--flip-card drifted]',
       '  cli.ts current <agentId> [--validator <address>]',
       '  cli.ts set-card <agentId|new> --endpoint <mcp url> [--name <name>] [--version <v>] [--send]',
       '  cli.ts methodology',
