@@ -46,6 +46,8 @@ import {
 } from './validation-registry.ts'
 import {
   ZERO_ADDRESS,
+  canValidatorWriteMirror,
+  claimSubname,
   ensTargetFromEnv,
   ensureSubname,
   planSubname,
@@ -330,15 +332,38 @@ async function ensSync(agentId: string): Promise<boolean> {
     const value = built.records[key]
     console.log(`  ${key.padEnd(24)} ${value.length === 0 ? '(cleared)' : value.slice(0, 90)}`)
   }
+  const access = await canValidatorWriteMirror(agentId)
+  if (!access.writable) {
+    console.log(`refused: ${access.reason}`)
+    return false
+  }
   if (!process.argv.includes('--send')) {
     console.log(`\nnothing was sent. re-run with --send to write all ${ENS_KEYS.length} records in one multicall.`)
     return true
   }
-  const subname = await ensureSubname(agentId)
-  if (subname.txHash !== null) console.log(`\nsubname       tx ${subname.txHash}`)
   const written = await writeRecords(agentId, built.records)
   console.log(`\nlanded        tx ${written.txHash}`)
   console.log(`read back     ${written.confirmed.key} ${JSON.stringify(written.confirmed.value)} on ${written.name}`)
+  return true
+}
+
+/**
+ * Operator-assisted claim: create agent{id} for IdentityRegistry ownerOf(agentId).
+ */
+async function ensClaim(agentId: string): Promise<boolean> {
+  const plan = await planSubname(agentId)
+  console.log(`name          ${plan.name}`)
+  console.log(`registry      ${plan.registry} on chain ${plan.chainId}`)
+  console.log(`current owner ${plan.currentOwner}`)
+  if (!process.argv.includes('--send')) {
+    console.log('\nnothing was sent. re-run with --send to claim the name for the identity owner.')
+    return true
+  }
+  const result = await claimSubname(agentId)
+  console.log(`\nclaimed       ${result.plan.name}`)
+  console.log(`owner         ${result.agentOwner}`)
+  console.log(`tx            ${result.txHash ?? '(already owned)'}`)
+  console.log(`read back     owner ${result.owner}, resolver ${result.resolver}`)
   return true
 }
 
@@ -396,7 +421,7 @@ async function ensSet(agentId: string): Promise<boolean> {
 
 async function ens(sub: string | undefined, ids: string[]): Promise<boolean> {
   if (sub === 'status') return await ensStatus(ids)
-  if (sub === 'subname' || sub === 'sync' || sub === 'verify' || sub === 'set') {
+  if (sub === 'subname' || sub === 'sync' || sub === 'verify' || sub === 'set' || sub === 'claim') {
     if (ids[0] === undefined) {
       console.log(`ens ${sub} needs an agent id`)
       return false
@@ -404,6 +429,7 @@ async function ens(sub: string | undefined, ids: string[]): Promise<boolean> {
     if (sub === 'subname') return await ensSubname(ids[0])
     if (sub === 'sync') return await ensSync(ids[0])
     if (sub === 'verify') return await ensVerify(ids[0])
+    if (sub === 'claim') return await ensClaim(ids[0])
     return await ensSet(ids[0])
   }
   console.log(
@@ -411,6 +437,7 @@ async function ens(sub: string | undefined, ids: string[]): Promise<boolean> {
       'usage:',
       '  cli.ts ens status [agentId …]',
       '  cli.ts ens subname <agentId> [--send]',
+      '  cli.ts ens claim <agentId> [--send]',
       '  cli.ts ens sync <agentId> [--send] [--receipts-head <hex>] [--receipts-count <n>]',
       '  cli.ts ens verify <agentId> [--receipts-head <hex>] [--receipts-count <n>]',
       '  cli.ts ens set <agentId> --key <key> --value <value> [--send]',
@@ -753,6 +780,7 @@ async function main(): Promise<void> {
       '  cli.ts set-card <agentId|new> --endpoint <mcp url> [--name <name>] [--version <v>] [--send]',
       '  cli.ts ens status [agentId …]',
       '  cli.ts ens subname <agentId> [--send]',
+      '  cli.ts ens claim <agentId> [--send]',
       '  cli.ts ens sync <agentId> [--send] [--receipts-head <hex>] [--receipts-count <n>]',
       '  cli.ts ens verify <agentId> [--receipts-head <hex>] [--receipts-count <n>]',
       '  cli.ts ens set <agentId> --key <key> --value <value> [--send]',

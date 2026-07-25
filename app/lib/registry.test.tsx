@@ -202,3 +202,24 @@ test("a malformed submission is refused and creates no row", async () => {
   hostile.set("ref", "<script>alert(1)</script>");
   assert.equal((await submitAgent(null, hostile)).kind, "invalid");
 });
+
+test("a registry id is accepted as the primary grade input", async () => {
+  const data = new FormData();
+  data.set("ref", "8441");
+  const result = await submitAgent(null, data);
+  // Without a live registry this is an error result, not an invalid shape refusal.
+  assert.notEqual(result.kind, "invalid");
+  if (result.kind === "error") {
+    assert.equal(result.ref, "8441");
+  }
+});
+
+test("a URL is refused; grading needs a registered agent id", async () => {
+  const data = new FormData();
+  data.set("ref", "https://mcp.example.com");
+  const result = await submitAgent(null, data);
+  assert.equal(result.kind, "invalid");
+  if (result.kind === "invalid") {
+    assert.match(result.message, /URL|package reference/i);
+  }
+});

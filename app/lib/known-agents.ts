@@ -1,18 +1,15 @@
 import type { AgentId } from "@/src/shared";
-import { ensConfig } from "@/src/shared/config";
-import { agentEnsName } from "@/src/validator/ens/names";
 
 /*
   The agents this stage already registered and published.
 
-  The grade form accepts ENS names under the Preflight parent, then converts them
-  to ERC-8004 ids via the name's preflight.agentId text record. The catalog shows
-  those names, not the numeric ids.
+  The grade form takes registry ids as the primary input. ENS names are optional
+  discoverability; appearance in this catalog does not require a mirrored name.
 */
 
 export type KnownAgent = {
   id: AgentId;
-  /** Short stage name shown next to the ENS name. */
+  /** Short stage name shown next to the id. */
   label: string;
   /** One line of why this agent is in the set. */
   note: string;
@@ -52,15 +49,14 @@ export const KNOWN_AGENT_IDS: readonly AgentId[] = KNOWN_AGENTS.map(
 );
 
 export type KnownAgentCatalogEntry = KnownAgent & {
-  /** Full ENS name under the configured parent, or null when the mirror is off. */
+  /** Full ENS name when a resolver already answers; otherwise null. */
   ensName: string | null;
 };
 
-/** Catalog rows for the grade form. Computed on the server so the parent comes from env. */
+/** Catalog rows for the grade form. ENS is filled in by discovery when mirrored. */
 export function knownAgentsCatalog(): KnownAgentCatalogEntry[] {
-  const config = ensConfig();
   return KNOWN_AGENTS.map((agent) => ({
     ...agent,
-    ensName: config === null ? null : agentEnsName(agent.id, config.parent),
+    ensName: null,
   }));
 }

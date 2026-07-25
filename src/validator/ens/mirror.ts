@@ -18,7 +18,12 @@ import { EnsMirrorError, reasonOf } from '../../shared/errors.ts'
 import { gradeForScore } from '../../shared/grade.ts'
 import { configuredTopicId } from '../../receipts/hcs-mirror.ts'
 import type { Address, AgentId, ChainId, Hex } from '../../shared/types.ts'
-import { ensTargetFromEnv, ensureSubname, writeRecords, type EnsTarget } from './client.ts'
+import {
+  canValidatorWriteMirror,
+  ensTargetFromEnv,
+  writeRecords,
+  type EnsTarget,
+} from './client.ts'
 import { buildTextRecords, type EnsKey } from './records.ts'
 
 export interface EnsMirrorJob {
@@ -58,14 +63,14 @@ export class EnsTextMirror {
   #draining = false
   #closed = false
   #retryDelayMs: number
-  #writeImpl: ((job: EnsMirrorJob) => Promise<Hex>) | null
+  #writeImpl: ((job: EnsMirrorJob) => Promise<Hex | null>) | null
 
   constructor(
     target: EnsTarget,
     options: {
       retryDelayMs?: number
-      /** Injected writer, for tests. Defaults to the subname check plus one resolver multicall. */
-      write?: (job: EnsMirrorJob) => Promise<Hex>
+      /** Injected writer, for tests. Defaults to write-when-writable (no auto-create). */
+      write?: (job: EnsMirrorJob) => Promise<Hex | null>
     } = {},
   ) {
     this.target = target
@@ -125,11 +130,14 @@ export class EnsTextMirror {
       while (this.#queue.length > 0 && !this.#closed) {
         const job = this.#queue[0]
         try {
-          this.#lastTx = await this.#writeOne(job)
+          const txHash = await this.#writeOne(job)
           // Only drop the head if it is still the job that was sent: a newer grade may have replaced
           // it while the transaction was in flight, and that one has not been written yet.
           if (this.#queue[0] === job) this.#queue.shift()
-          this.#mirrored += 1
+          if (txHash !== null) {
+            this.#lastTx = txHash
+            this.#mirrored += 1
+          }
         } catch (err) {
           // Retried in the background and reported as a count. Never raised into the caller.
           this.#failed += 1
@@ -147,11 +155,11 @@ export class EnsTextMirror {
     }
   }
 
-  async #writeOne(job: EnsMirrorJob): Promise<Hex> {
+  async #writeOne(job: EnsMirrorJob): Promise<Hex | null> {
     if (this.#writeImpl !== null) return await this.#writeImpl(job)
-    // Idempotent, and it costs a transaction only the first time an agent is mirrored. Without it a
-    // freshly graded agent has no name to write records to.
-    await ensureSubname(job.agentId, { target: this.target })
+    // Claim is explicit. Publish never creates a subname, and it never overwrites an owner-held name.
+    const access = await canValidatorWriteMirror(job.agentId, { target: this.target })
+    if (!access.writable) return null
     const written = await writeRecords(job.agentId, job.records, { target: this.target })
     return written.txHash
   }
