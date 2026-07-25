@@ -80,9 +80,10 @@
 /*
   The deck prints one slide per page.
 
-  The stage scales a fixed 1920 by 1080 canvas to fit a screen; print wants the
-  opposite, so every slide is laid flat at its own size and paginated. That is what
-  makes "Download PDF" the browser's own print dialog rather than a second renderer.
+  Screen mode stacks every slide at position:absolute inset:0 inside a fixed
+  stage. Print must unwrap that stage into document flow and size each slide at
+  1920 by 1080 with a page break, or the PDF is one sheet of the last slide.
+  The stage also commits inline print geometry before window.print().
 */
 @media print {
   @page {
@@ -90,23 +91,65 @@
     margin: 0;
   }
 
+  html,
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: none !important;
+    overflow: visible !important;
+    height: auto !important;
+    min-height: 0 !important;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
   .deck-chrome {
     display: none !important;
   }
 
+  .deck-root,
   .deck-viewport {
+    position: static !important;
+    inset: auto !important;
     height: auto !important;
+    width: auto !important;
     overflow: visible !important;
+    background: none !important;
   }
 
   .deck-canvas {
     transform: none !important;
     position: static !important;
+    top: auto !important;
+    left: auto !important;
+    width: auto !important;
+    height: auto !important;
   }
 
   .deck-slide {
-    display: flex !important;
+    position: relative !important;
+    inset: auto !important;
+    top: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    left: auto !important;
+    width: 1920px !important;
+    height: 1080px !important;
+    box-sizing: border-box !important;
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
     break-after: page;
     page-break-after: always;
+    break-inside: avoid;
+    overflow: hidden;
+  }
+
+  .deck-slide:last-child {
+    break-after: auto;
+    page-break-after: auto;
   }
 }
