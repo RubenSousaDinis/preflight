@@ -8,7 +8,7 @@ import {
   zerogShowcaseUrl,
 } from "@/src/validator/ens/partner-links";
 import { readValidationWithEvidence } from "@/src/validator/validation-registry";
-import { ensNameIfRegistered } from "./ens";
+import { ensPointerIfRegistered, type EnsPointer } from "./ens";
 import { toRenderableError, type RenderableError } from "./errors";
 
 /**
@@ -39,7 +39,12 @@ export type AgentGradePage =
       expiresAt: number;
       expired: boolean;
       validator: string;
-      ensName: string | null;
+      /**
+       * Null until the subname exists. The resolver and node travel with the
+       * name because the page links a reader at the contract that answers for
+       * it on Base Sepolia, which is the only place it answers.
+       */
+      ens: EnsPointer | null;
       chainId: number;
       partners: PartnerLink[];
     }
@@ -83,9 +88,9 @@ export async function loadAgentGradePage(
   try {
     const { chainId } = validationRegistry();
     const validator = validatorAddress();
-    const [record, ensName] = await Promise.all([
+    const [record, ens] = await Promise.all([
       readValidationWithEvidence(agentId, validator, { includeExpired: true }),
-      ensNameIfRegistered(agentId),
+      ensPointerIfRegistered(agentId),
     ]);
 
     if (record === null) return { kind: "absent", agentId };
@@ -105,7 +110,7 @@ export async function loadAgentGradePage(
       expiresAt: record.expiresAt,
       expired: record.expiresAt <= now,
       validator: record.validator,
-      ensName,
+      ens,
       chainId,
       partners: partnerLinksFor(record.responseURI),
     };
