@@ -7,7 +7,12 @@ import { handleControlRequest } from './control.ts'
 import { POISONED_OUTPUT, POISONED_TOOL, handleMcpRequest } from './mcp-server.ts'
 import { BASELINE_TOOL_COUNT, DRIFTED_TOOL_COUNT, PAGE_SIZE } from './tool-surface.ts'
 import { checkToolOutput } from './output-check.ts'
-import { currentToolSurface, resetToolSurface, setToolSurface } from './variant-store.ts'
+import {
+  configuredInitialVariant,
+  currentToolSurface,
+  resetToolSurface,
+  setToolSurface,
+} from './variant-store.ts'
 
 let nextId = 1
 
@@ -153,6 +158,25 @@ test('the flip is idempotent, and readable before a run', async () => {
   assert.equal(await currentToolSurface(), 'drifted')
   await resetToolSurface()
   assert.equal(await currentToolSurface(), 'baseline')
+})
+
+test('a fresh instance starts on the variant the environment names', () => {
+  const previous = process.env.DEMO_DEFAULT_VARIANT
+  try {
+    delete process.env.DEMO_DEFAULT_VARIANT
+    assert.equal(configuredInitialVariant(), 'baseline', 'unset stays on the graded surface')
+    process.env.DEMO_DEFAULT_VARIANT = '  poisoned '
+    assert.equal(configuredInitialVariant(), 'poisoned', 'surrounding space is not a different value')
+    process.env.DEMO_DEFAULT_VARIANT = ''
+    assert.equal(configuredInitialVariant(), 'baseline', 'empty is unset, not invalid')
+    // Refusing beats falling back: a typo that quietly served the graded surface is the failure this
+    // seeding exists to remove, and it would look exactly like a working demo until the turn never came.
+    process.env.DEMO_DEFAULT_VARIANT = 'poisened'
+    assert.throws(() => configuredInitialVariant(), /not one of baseline, drifted, poisoned/)
+  } finally {
+    if (previous === undefined) delete process.env.DEMO_DEFAULT_VARIANT
+    else process.env.DEMO_DEFAULT_VARIANT = previous
+  }
 })
 
 // --- the control plane -----------------------------------------------------

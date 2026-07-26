@@ -24,12 +24,20 @@ export const KNOWN_AGENTS: readonly KnownAgent[] = [
   {
     id: "8430",
     label: "Demo poisoned",
-    note: "E1 surface=poisoned, refuse path",
+    note: "E1 surface=poisoned, graded F, refuse path",
   },
   {
+    /*
+      Not a card pointed at the poisoned surface, which is the one arrangement
+      that cannot work: the endpoint string is hashed into the composed
+      fingerprint, so a card moved to ?surface=poisoned reads as drift and the
+      gate refuses it before the injection ever runs. This one is graded B
+      against the plain URL and hired on that record, and the surface behind
+      that same URL is what turns.
+    */
     id: "8436",
-    label: "Demo poisoned card",
-    note: "card pointed at the poisoned surface",
+    label: "Demo turncoat",
+    note: "graded B, then serves the poisoned surface",
   },
   {
     id: "8437",
