@@ -45,6 +45,12 @@ export type ClaimResult =
       mainnetId: string | null;
       name: string;
       owner: string;
+      /**
+       * The Basenames L2 resolver holding the records, so the form can send a
+       * reader at the contract that answers rather than at the ENS App, which
+       * resolves through L1 and reads null for every key on these names.
+       */
+      resolver: string;
       txHash: string | null;
       /** True when ValidationRegistry values were written before ownership moved. */
       recordsSeeded: boolean;
@@ -189,6 +195,7 @@ export async function claimAgent(
         mainnetId: raw,
         name: result.plan.name,
         owner: result.agentOwner,
+        resolver: result.resolver,
         txHash: result.txHash,
         recordsSeeded: result.recordsSeeded,
         trustNote: result.recordsSeeded
@@ -208,6 +215,7 @@ export async function claimAgent(
       mainnetId: null,
       name: result.plan.name,
       owner: result.agentOwner,
+      resolver: result.resolver,
       txHash: result.txHash,
       recordsSeeded: result.recordsSeeded,
       trustNote: result.recordsSeeded

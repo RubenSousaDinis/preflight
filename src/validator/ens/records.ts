@@ -24,8 +24,10 @@ import { hederaTopicExplorerUrl, zerogShowcaseUrl } from './partner-links.ts'
  * The spelling lives here and nowhere else. Two surfaces inventing two spellings of the same key is
  * drift within hours, and the reader of the second one sees a name with no grade on it.
  *
- * `url` is the standard ENS text key the ENS App surfaces under Records. It points at the Preflight
- * page that shows the live grade and evidence; it is still a pointer, not a source.
+ * `url` is the standard ENS text key a profile reader surfaces under Records. It points at the
+ * Preflight page that shows the live grade and evidence; it is still a pointer, not a source. Note
+ * that no L1 reader sees it: these names answer on the Base Sepolia Basenames resolver only, and
+ * resolving one through L1 returns null for every key here.
  *
  * `preflight.zerog` and `preflight.hedera` are partner showcase links: set only when that stack was
  * actually used (0G evidence URI, or an HCS receipt-mirror topic), cleared on re-sync otherwise.

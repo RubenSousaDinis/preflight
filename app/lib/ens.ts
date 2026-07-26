@@ -65,16 +65,31 @@ export function ensNameFor(agentId: AgentId): string | null {
 }
 
 /**
- * The name only when it actually exists on the configured registry.
+ * Where a name's records actually live, for a surface that wants to link at them.
+ *
+ * The resolver and the node together are the whole read: `text(node, key)` on
+ * that contract, on Base Sepolia. Both are on this type because neither is
+ * derivable on a client, and because a link into the ENS App is not an option
+ * here: that resolves through L1, where every key on these names reads null.
+ */
+export type EnsPointer = {
+  name: string;
+  /** The Basenames L2 resolver the registry names for this node. */
+  resolver: string;
+  node: string;
+};
+
+/**
+ * The name and its resolver, only when the name exists on the configured registry.
  *
  * A derived name with no owner and no resolver is a string about a name that
  * answers nothing. The board and the floor refuse to put that on a row: they
  * wait until the registry names a resolver for the node, which is the same
  * moment the subname step finished.
  */
-export async function ensNameIfRegistered(
+export async function ensPointerIfRegistered(
   agentId: AgentId,
-): Promise<string | null> {
+): Promise<EnsPointer | null> {
   try {
     const config = ensConfig();
     if (config === null) return null;
@@ -82,10 +97,19 @@ export async function ensNameIfRegistered(
       timeoutMs: 4_000,
       keys: [],
     });
-    return read.resolver === null ? null : read.name;
+    if (read.resolver === null) return null;
+    return { name: read.name, resolver: read.resolver, node: read.node };
   } catch {
     return null;
   }
+}
+
+/** The registered name alone, for the rows that carry nothing but a label. */
+export async function ensNameIfRegistered(
+  agentId: AgentId,
+): Promise<string | null> {
+  const pointer = await ensPointerIfRegistered(agentId);
+  return pointer === null ? null : pointer.name;
 }
 
 /** The records on an agent's name. Never throws. */
