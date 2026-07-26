@@ -53,6 +53,13 @@ export interface VetAgentOptions extends LiveFingerprintOptions {
   now?: number
   /** Emits a receipt for the decision, hire or refuse. */
   receipts?: ReceiptChain
+  /**
+   * The id this agent's record was published under, when it is not the agent's own id.
+   *
+   * Normally resolved from the mirror link map and not passed at all. It is here so a caller that
+   * already knows the mapping does not have to go back to the filesystem for it.
+   */
+  recordAgentId?: AgentId
   /** Injected readers, for tests. */
   readRecord?: (agentId: AgentId) => Promise<GateRecord | null>
   fetchEvidence?: (uri: string) => Promise<string>
@@ -73,6 +80,34 @@ function refuse(
     score: parts.score ?? null,
     fingerprintMatch: parts.fingerprintMatch ?? null,
     record: parts.record ?? null,
+  }
+}
+
+/**
+ * The id a record for this agent would have been published under.
+ *
+ * A Base mainnet agent cannot hold a record on the Sepolia ValidationRegistry under its own id.
+ * The publish path mirrors it to a Sepolia identity first and writes the record against that id,
+ * so reading under the mainnet id misses a record that exists, and misses it as "no record at
+ * all". That is the worst shape the miss could take: on screen it reads as an agent nobody has
+ * ever graded, rather than as a lookup that went to the wrong key.
+ *
+ * Resolved here rather than at each call site because every caller getting it right forever is
+ * how this went wrong in the first place: the catalog already probes the mirror id, and the gate
+ * did not. The import is dynamic because the link map reads the filesystem, and the failure is
+ * swallowed on purpose: an unmirrored agent's own id is the only id there is, which is exactly
+ * what the fallback returns.
+ */
+async function recordIdFor(
+  agentId: AgentId,
+  options: VetAgentOptions,
+): Promise<AgentId> {
+  if (options.recordAgentId !== undefined) return options.recordAgentId
+  try {
+    const { sepoliaIdForMainnet } = await import('../../validator/mirror-links.ts')
+    return sepoliaIdForMainnet(agentId) ?? agentId
+  } catch {
+    return agentId
   }
 }
 
@@ -97,16 +132,21 @@ export async function vetAgent(
   const now = options.now ?? Math.floor(Date.now() / 1000)
   const validator = getAddress(options.validator ?? validatorAddress())
 
+  // The registry is asked about the id the record lives under, which is the agent's own id unless
+  // it is a mainnet agent carrying a Sepolia mirror. Everything else below still reports the agent
+  // the caller asked about, because that is the one the operator recognizes.
+  const recordId = await recordIdFor(agentId, options)
+
   // --- 1. the record, filtered to our validator -----------------------------
   let record: GateRecord | null
   try {
     if (options.readRecord !== undefined) {
-      record = await options.readRecord(agentId)
+      record = await options.readRecord(recordId)
     } else {
       // Ordered by block, not by wall clock. An agent that has been re-graded carries two records, and
       // two transactions can share a consensus second, so selecting by `lastUpdate` would pick the
       // superseded one roughly half the time it matters, which is exactly the case beat 4 creates.
-      const current = await readCurrentValidation(agentId, validator, {
+      const current = await readCurrentValidation(recordId, validator, {
         ...options.read,
         now,
         includeExpired: true,
@@ -129,7 +169,7 @@ export async function vetAgent(
       foreign =
         options.readRecord !== undefined
           ? []
-          : await readForeignValidators(agentId, validator, { ...options.read })
+          : await readForeignValidators(recordId, validator, { ...options.read })
     } catch {
       foreign = []
     }
@@ -141,8 +181,14 @@ export async function vetAgent(
         options,
       )
     }
+    // Naming the mirror id is not decoration: absence under a mirrored id and absence under the
+    // agent's own id are the same verdict but not the same thing to go and fix.
+    const where =
+      recordId === agentId
+        ? `for agent ${agentId}`
+        : `for agent ${agentId}, whose records are published under its Sepolia mirror id ${recordId}`
     return withReceipt(
-      refuse(`no validation record from ${validator} for agent ${agentId}, so there is nothing to check`),
+      refuse(`no validation record from ${validator} ${where}, so there is nothing to check`),
       options,
     )
   }

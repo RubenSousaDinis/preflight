@@ -159,6 +159,73 @@ test('check 4: a surface read one page deep fingerprints differently from the wh
   assert.notEqual(pageOneOnly, wholeSurface, 'a one-page read must not produce the full fingerprint')
 })
 
+// --- the id a record is looked up under -------------------------------------
+
+/*
+  A Base mainnet agent cannot hold a record on the Sepolia ValidationRegistry under its own id. The
+  publish path mirrors it to a Sepolia identity first and writes the record against that id, so a
+  gate reading under the mainnet id misses a record that exists, and misses it as "no record at
+  all". On screen that reads as an agent nobody ever graded, which is a different and much worse
+  claim than "this lookup went to the wrong key".
+
+  Driven through the env link map rather than `recordMirrorLink`, because that helper writes the
+  durable map in `data/`, and a test has no business editing it.
+*/
+async function withMirrorLinks<T>(
+  links: { mainnetId: string; sepoliaId: string; linkedAt: number }[],
+  run: () => Promise<T>,
+): Promise<T> {
+  const previous = process.env.MAINNET_SEPOLIA_LINKS
+  process.env.MAINNET_SEPOLIA_LINKS = JSON.stringify(links)
+  try {
+    return await run()
+  } finally {
+    if (previous === undefined) delete process.env.MAINNET_SEPOLIA_LINKS
+    else process.env.MAINNET_SEPOLIA_LINKS = previous
+  }
+}
+
+test('a mirrored mainnet agent is looked up under the id its record was published against', async () => {
+  const asked: string[] = []
+  const decision = await withMirrorLinks(
+    [{ mainnetId: '22387', sepoliaId: '8499', linkedAt: 1 }],
+    () =>
+      vetAgent('22387', DEFAULT_POLICY, {
+        now: NOW,
+        validator: VALIDATOR,
+        readRecord: async (id) => {
+          asked.push(id)
+          return null
+        },
+      }),
+  )
+
+  assert.deepEqual(asked, ['8499'], 'the mirror id is the one the registry is asked about')
+  assert.equal(decision.verdict, 'REFUSE')
+  // Both ids, so an operator can see which key was read rather than guessing.
+  assert.match(decision.reason, /22387/)
+  assert.match(decision.reason, /8499/)
+})
+
+test('an agent with no mirror is still looked up under its own id', async () => {
+  const asked: string[] = []
+  const decision = await withMirrorLinks([], () =>
+    vetAgent(AGENT, DEFAULT_POLICY, {
+      now: NOW,
+      validator: VALIDATOR,
+      readRecord: async (id) => {
+        asked.push(id)
+        return null
+      },
+    }),
+  )
+
+  assert.deepEqual(asked, [AGENT])
+  assert.equal(decision.verdict, 'REFUSE')
+  // No mirror, so nothing to disclose: the reason names one id and not a mapping.
+  assert.doesNotMatch(decision.reason, /mirror/)
+})
+
 // --- every refusal cause, each distinguishable ------------------------------
 
 test('all the refusal causes are reachable, and every reason reads differently', async () => {

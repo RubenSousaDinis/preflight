@@ -10,7 +10,7 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 export type MirrorLink = {
   mainnetId: string;
@@ -21,9 +21,22 @@ export type MirrorLink = {
 
 const ENV_KEY = "MAINNET_SEPOLIA_LINKS";
 
+/**
+ * Where the durable map lives, overridable.
+ *
+ * The override exists because `clearMirrorLinkMemory` writes an empty map, and the default path is
+ * a file that is committed and that the gate depends on: without a way to point the tests
+ * somewhere else, running the suite erased every published mirror link, and the next lookup
+ * reported an agent as never graded. A test writing over checked-in data is the bug, not the
+ * symptom, so the seam is here rather than a guard in the helper.
+ */
+const FILE_ENV_KEY = "PREFLIGHT_MIRROR_LINKS_FILE";
+
 const memory = new Map<string, MirrorLink>();
 
 function linksFilePath(): string {
+  const override = process.env[FILE_ENV_KEY]?.trim();
+  if (override !== undefined && override.length > 0) return override;
   return join(process.cwd(), "data/mainnet-sepolia-links.json");
 }
 
@@ -105,7 +118,7 @@ export function recordMirrorLink(link: MirrorLink): void {
   const merged = listMirrorLinks();
   const path = linksFilePath();
   try {
-    mkdirSync(join(process.cwd(), "data"), { recursive: true });
+    mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, `${JSON.stringify(merged, null, 2)}\n`, "utf8");
   } catch {
     // Serverless / read-only FS: memory + returned sepoliaId still work for this process.
