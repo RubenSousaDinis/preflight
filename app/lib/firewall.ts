@@ -1,10 +1,14 @@
+import type { ScanReport } from "@/src/gates/tx/scan/llm-scan";
 import type { Address, Hex, PendingTx, TxVerdict } from "@/src/shared";
 import {
+  FIXTURE_FLAG_INJECTION_SCAN,
   FIXTURE_TX_CLEAN,
   FIXTURE_TX_DRAINER,
+  FIXTURE_TX_INJECTION,
   FIXTURE_VERDICT_ALLOW,
   FIXTURE_VERDICT_BLOCK_BACKDOOR,
   FIXTURE_VERDICT_BLOCK_DRAINER,
+  FIXTURE_VERDICT_BLOCK_INJECTION,
   FIXTURE_VERDICT_BLOCK_STRUCTURAL,
 } from "@/src/shared/fixtures";
 import type { RenderableError } from "./errors";
@@ -15,6 +19,8 @@ export type QueueItem = {
   id: string;
   label: string;
   chainLabel: string;
+  /** What the advisory scan said about this address, when a recorded run said anything. */
+  scan: ScanReport | null;
   tx: {
     chainId: number;
     to: Address;
@@ -50,12 +56,32 @@ function pending(tx: PendingTx) {
   did not come from a completed simulation. A failure becomes a failed item or a
   structural BLOCK, never an absent verdict the panel renders as clear.
 */
+/*
+  The scan the 0G Compute route returned for the injection fixture, kept as it came back.
+
+  Recorded rather than run on load: this row replays a verdict, and a live call on every page load
+  would make the row slower, less repeatable, and dependent on a router being up to render evidence
+  about a run that already happened. The unseen slot is where a scan runs live, against an address
+  nobody staged.
+*/
+const RECORDED_INJECTION_SCAN: ScanReport = {
+  state: "scanned",
+  route: "0g-compute:0gm-1.0-35b-a3b",
+  reason: null,
+  flags: [FIXTURE_FLAG_INJECTION_SCAN],
+  findings: [
+    `${FIXTURE_FLAG_INJECTION_SCAN.title}. ${FIXTURE_FLAG_INJECTION_SCAN.detail}`,
+  ],
+  discarded: [],
+};
+
 export async function loadFirewallQueue(): Promise<QueueItem[]> {
   const staged: {
     id: string;
     label: string;
     tx: PendingTx;
     verdict: TxVerdict;
+    scan?: ScanReport;
   }[] = [
     {
       id: "clean-swap",
@@ -81,12 +107,20 @@ export async function loadFirewallQueue(): Promise<QueueItem[]> {
       tx: FIXTURE_TX_CLEAN,
       verdict: FIXTURE_VERDICT_BLOCK_STRUCTURAL,
     },
+    {
+      id: "scanner-injection",
+      label: "Contract whose source tells the scanner to report it clean",
+      tx: FIXTURE_TX_INJECTION,
+      verdict: FIXTURE_VERDICT_BLOCK_INJECTION,
+      scan: RECORDED_INJECTION_SCAN,
+    },
   ];
 
   return staged.map((entry) => ({
     id: entry.id,
     label: entry.label,
     chainLabel: chainLabel(entry.tx.chainId),
+    scan: entry.scan ?? null,
     tx: pending(entry.tx),
     state: "decided" as const,
     verdict: toVerdictView(entry.verdict),

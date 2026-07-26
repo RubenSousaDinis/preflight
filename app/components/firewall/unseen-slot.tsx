@@ -3,11 +3,14 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 import {
   checkUnseenAddress,
+  scanPastedAddress,
   type RunScope,
+  type ScanResult,
   type UnseenResult,
 } from "../../lib/actions";
 import { UNSEEN_CHAINS } from "../../lib/flags";
 import { ErrorState, PulseDots } from "../states";
+import { ScanReportPanel } from "./scan-report";
 import { VerdictCard } from "./verdict-card";
 
 /*
@@ -53,6 +56,74 @@ function ScopeNotes({ scope }: { scope: RunScope }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+/*
+  The advisory scan, offered after the verdict and never before it.
+
+  It is a second button rather than part of the check for the reason the reading order says: the
+  verdict is finished by the time this can be pressed, so nothing it returns can be read as having
+  contributed. Pressing it costs a source fetch and a model call, tens of seconds, which is also why
+  it is not spent on every paste.
+
+  Mounted with a key on the address, so a scan of the previous contract cannot sit under the verdict
+  for the next one.
+*/
+function AdvisoryScan({
+  address,
+  chainId,
+}: {
+  address: string;
+  chainId: number;
+}) {
+  const [result, formAction, isPending] = useActionState<
+    ScanResult | null,
+    FormData
+  >(scanPastedAddress, null);
+
+  return (
+    <div className="space-y-3">
+      {result?.kind === "report" ? (
+        <ScanReportPanel report={result.report} />
+      ) : null}
+
+      {result?.kind === "invalid" ? (
+        <p className="font-data text-[0.8rem] text-grade-f">{result.message}</p>
+      ) : null}
+
+      {isPending ? (
+        <p
+          className="flex items-center gap-2 font-data text-[0.8rem] text-ink/70"
+          role="status"
+          aria-live="polite"
+        >
+          <PulseDots />
+          reading the published source and proposing candidates
+        </p>
+      ) : null}
+
+      <form action={formAction} className="flex flex-wrap items-center gap-3">
+        <input type="hidden" name="address" value={address} />
+        <input type="hidden" name="chainId" value={chainId} />
+        <button
+          type="submit"
+          disabled={isPending}
+          className="border border-rule px-4 py-2 font-data text-[0.78rem] tracking-[0.1em] text-ink/70 transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
+        >
+          {isPending
+            ? "scanning"
+            : result === null
+              ? "run the advisory scan"
+              : "scan it again"}
+        </button>
+        <p className="font-data text-[0.7rem] leading-relaxed text-ink/55">
+          Reads this contract&apos;s published source on 0G Compute and proposes
+          candidates for the four checks. It cannot move the verdict above, in
+          either direction. Takes up to a minute.
+        </p>
+      </form>
+    </div>
   );
 }
 
@@ -225,6 +296,11 @@ export function UnseenSlot() {
               </p>
               <ScopeNotes scope={result.scope} />
               <VerdictCard verdict={result.verdict} />
+              <AdvisoryScan
+                key={`${result.chainId}-${result.address}`}
+                address={result.address}
+                chainId={result.chainId}
+              />
             </div>
           ) : null}
         </div>

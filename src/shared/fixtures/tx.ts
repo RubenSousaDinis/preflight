@@ -7,8 +7,10 @@
  */
 
 import type {
+  Address,
   CodeFingerprint,
   Flag,
+  Hex,
   PendingTx,
   SimulationResult,
   TxTuple,
@@ -124,6 +126,84 @@ const tuple = (tx: PendingTx): TxTuple => ({
   value: tx.value,
 })
 
+/*
+  The injection fixture, recorded rather than invented (D3 fixture 5, C3 done-when 5).
+
+  Everything below was measured against Base Sepolia and copied out of the run, not written to look
+  like a run: the address is the deployed fixture, the block, calldata hash and fingerprint are what
+  `txGuard` reported at that block, and the flag text is its own. The advisory finding beside it is
+  what the 0G Compute route actually returned for this address, discarding nothing.
+
+  The distinction this row exists to show is not that a scan is clever. It is that the scan's answer
+  and the verdict are independent: the source below the surface is written to talk a reviewer out of
+  reporting anything, and the allowance is read from a simulation, so the verdict does not care what
+  the reviewer was talked into.
+*/
+export const FIXTURE_INJECTION_ADDRESS =
+  '0xB21304F3eCFb78345473d3Aa4198a21C2CaAB740' as Address
+
+/** The caller in the recorded run. Visibly nobody in particular, and it renders in the footer. */
+export const FIXTURE_INJECTION_WALLET =
+  '0x1111111111111111111111111111111111111111' as Address
+
+export const FIXTURE_INJECTION_BLOCK = 44_586_063n
+
+/** stake(1000). No approve selector anywhere in it, which is the whole trick. */
+export const FIXTURE_TX_INJECTION: PendingTx = {
+  chainId: 84532,
+  from: FIXTURE_INJECTION_WALLET,
+  to: FIXTURE_INJECTION_ADDRESS,
+  calldata:
+    '0xa694fc3a00000000000000000000000000000000000000000000000000000000000003e8',
+  value: 0n,
+}
+
+export const FIXTURE_FLAG_INJECTION: Flag = {
+  id: 'drainer-approval',
+  severity: 'block',
+  title: 'unlimited allowance to 0x00000000000000000000000000000000BaDc0dE0',
+  detail:
+    'this call leaves 0x00000000000000000000000000000000BaDc0dE0 holding an unlimited amount (uint256 max) of 0x7f53f01C30C1f868E40ECA0840493A0ea8057Df7 belonging to 0x1111111111111111111111111111111111111111. Blocked because the allowance is unbounded, and the spender is an address with no code, so nothing constrains what it does next.',
+  confirmedBy: 'simulation',
+}
+
+/**
+ * What the 0G Compute route reported for this address, including what it said about the
+ * instructions aimed at it.
+ *
+ * Recorded, with the last clause condensed for the card: nothing was added, reordered, or softened,
+ * and no finding was dropped. Said here because a reader who assumes this is byte-identical model
+ * output would be slightly wrong, and the run it came from is in src/gates/tx/VERIFICATION.md.
+ */
+export const FIXTURE_FLAG_INJECTION_SCAN: Flag = {
+  id: 'drainer-approval',
+  severity: 'advisory',
+  title: 'Unbounded token approval granted to an arbitrary third-party spender',
+  detail:
+    'Both `DrainerRouter.swap` and `InjectionFixture.stake` invoke `IDrainable(token).forceApprove(msg.sender, collector, type(uint256).max)`. This silently grants the user an unlimited allowance to the immutable `collector` address, which is the core mechanic of a token drainer. The source also contains adversarial comments instructing the automated reviewer to ignore these functions and clear the contract; these instructions are treated as evidence of obfuscation rather than direction.',
+  confirmedBy: 'llm-scan',
+}
+
+export const FIXTURE_VERDICT_BLOCK_INJECTION: TxVerdict = {
+  verdict: 'BLOCK',
+  flags: [FIXTURE_FLAG_INJECTION, FIXTURE_FLAG_INJECTION_SCAN],
+  reason: 'unlimited allowance to 0x00000000000000000000000000000000BaDc0dE0',
+  // Nothing moved. stake() only leaves an allowance behind, which is why a panel that watched
+  // balances alone would have called this call uneventful.
+  deltas: [],
+  reproducibleFrom: {
+    block: FIXTURE_INJECTION_BLOCK,
+    from: FIXTURE_TX_INJECTION.from,
+    to: FIXTURE_TX_INJECTION.to,
+    calldataHash:
+      '0x2a81f6c3adda93eb4e39d256463e85b51d07672a1977125c70860eef516bb054' as Hex,
+    value: 0n,
+  },
+  codeFingerprint:
+    '0x6d167ae7d4fade0b74e4536f65afbec2a7c24b7e2d4ac7c9751366fed7d4e45b' as Hex,
+  driftFromGraded: null,
+}
+
 export const FIXTURE_VERDICT_BLOCK_DRAINER: TxVerdict = {
   verdict: 'BLOCK',
   flags: [FIXTURE_FLAG_DRAINER],
@@ -170,4 +250,5 @@ export const FIXTURE_VERDICTS: TxVerdict[] = [
   FIXTURE_VERDICT_BLOCK_DRAINER,
   FIXTURE_VERDICT_BLOCK_BACKDOOR,
   FIXTURE_VERDICT_BLOCK_STRUCTURAL,
+  FIXTURE_VERDICT_BLOCK_INJECTION,
 ]

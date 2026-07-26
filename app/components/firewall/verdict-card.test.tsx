@@ -122,7 +122,10 @@ test("the panel names exactly four checks and never implies a fifth", async () =
 
 test("every staged call carries a verdict, and no balance movement is hidden", async () => {
   const queue = await loadFirewallQueue();
-  assert.equal(queue.length, 4);
+  // Pinned so a row cannot vanish unnoticed. Five recorded calls, which says nothing about the
+  // closed set of four checks: the row above asserts that set, and a fifth call is not a fifth
+  // detector.
+  assert.equal(queue.length, 5);
 
   for (const item of queue) {
     assert.equal(item.state, "decided");

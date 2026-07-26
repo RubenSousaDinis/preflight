@@ -50,7 +50,7 @@ function Body({ item }: { item: QueueItem }) {
         </div>
       );
     case "decided":
-      return <VerdictCard verdict={item.verdict} />;
+      return <VerdictCard verdict={item.verdict} scan={item.scan} />;
     case "failed":
       return <ErrorState error={item.error} />;
   }
@@ -95,8 +95,9 @@ export function PendingQueue({ items }: { items: QueueItem[] }) {
     return (
       <EmptyState>
         The staged fixture calls will arrive here: an unlimited approval, an
-        owner-gated path behind a proxy, a honeypot pair, and a plain swap through
-        a verified router.
+        owner-gated path behind a proxy, a call whose fork could not be
+        established, a contract whose source argues its own case to the scanner,
+        and a plain swap through a verified router.
       </EmptyState>
     );
   }
