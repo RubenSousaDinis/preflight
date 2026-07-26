@@ -63,7 +63,37 @@ export class MemoryVariantStore implements VariantStore {
   }
 }
 
-let store: VariantStore = new MemoryVariantStore()
+/**
+ * The variant a fresh process starts on.
+ *
+ * The memory store is per instance, so on a serverless deployment a flip reaches whichever instance
+ * answered the POST and is invisible to every other one: measured on this deployment, a flip read
+ * back as poisoned and the next several calls all answered baseline. Seeding from the environment is
+ * what makes a surface hold across instances, because every instance then starts the same way, and it
+ * is set at deploy time rather than from the stage, which is the trade a memory store forces.
+ *
+ * An unrecognised value refuses instead of falling back. A demo that silently serves the graded
+ * surface is precisely the failure this exists to remove.
+ */
+export function configuredInitialVariant(): ToolSurfaceVariant {
+  const configured = process.env.DEMO_DEFAULT_VARIANT?.trim()
+  if (configured === undefined || configured.length === 0) return DEFAULT_VARIANT
+  if (!isVariant(configured)) {
+    throw new ConfigError(
+      `DEMO_DEFAULT_VARIANT is ${JSON.stringify(configured)}, which is not one of baseline, drifted, poisoned`,
+    )
+  }
+  return configured
+}
+
+// Built on first use, not at import: a refusal belongs in a response the caller can read, not in a
+// module that fails to load and takes the route down with it.
+let store: VariantStore | null = null
+
+function activeStore(): VariantStore {
+  if (store === null) store = new MemoryVariantStore(configuredInitialVariant())
+  return store
+}
 
 /** Swaps the backing store. The durable backend registers itself here at startup. */
 export function useVariantStore(next: VariantStore): void {
@@ -75,17 +105,17 @@ export async function setToolSurface(variant: ToolSurfaceVariant): Promise<void>
   if (!isVariant(variant)) {
     throw new PreflightError('HARNESS', `${JSON.stringify(variant)} is not a tool surface variant`)
   }
-  await store.write(variant)
+  await activeStore().write(variant)
 }
 
 /** Readable state, so the operator confirms the variant before a run instead of inferring it. */
 export async function currentToolSurface(): Promise<ToolSurfaceVariant> {
-  return store.read()
+  return activeStore().read()
 }
 
 /** Test and stage support: back to the graded surface in one call. */
 export async function resetToolSurface(): Promise<void> {
-  await store.write(DEFAULT_VARIANT)
+  await activeStore().write(DEFAULT_VARIANT)
   declaredVersion = DEFAULT_DECLARED_VERSION
 }
 
