@@ -1,5 +1,3 @@
-import { ensAppUrl } from "../../lib/ens-app-url";
-
 /*
   One agent, named.
 
@@ -23,7 +21,11 @@ export function AgentName({
   name: string | null;
   agentId: string;
   ensName?: string | null;
-  /** Render the ENS name as a link into the ENS app. */
+  /**
+   * Link the ENS name at this agent's grade page, which renders the records as
+   * read from Base Sepolia. Not at the ENS App: that resolves through L1, where
+   * every key on these names reads null.
+   */
   linkEns?: boolean;
   /**
    * Off when the caller already prints the id in a meta line of its own. It is
@@ -44,9 +46,7 @@ export function AgentName({
       {ensName !== null && ensName.length > 0 ? (
         linkEns ? (
           <a
-            href={ensAppUrl(ensName)}
-            target="_blank"
-            rel="noopener noreferrer"
+            href={`/a/${agentId}`}
             className="mt-0.5 block font-data text-[0.72rem] break-all text-accent underline-offset-2 hover:underline"
           >
             {ensName}

@@ -1,7 +1,11 @@
 "use client";
 
 import { startTransition, useActionState, useRef, useState } from "react";
-import { baseSepoliaTxUrl, ensAppUrl } from "../../lib/ens-app-url";
+import {
+  ENS_MIRROR_CHAIN_LABEL,
+  baseSepoliaTxUrl,
+  ensResolverReadUrl,
+} from "../../lib/ens-mirror-url";
 import { agentLabelFor } from "../../lib/agent-display";
 import type { KnownAgentCatalogEntry } from "../../lib/known-agents";
 import {
@@ -244,9 +248,7 @@ export function SubmitForm({
           <div className="mt-3 border border-rule bg-band/50 px-4 py-3">
             <p className="font-data text-[0.74rem] break-all text-ink/55">
               <a
-                href={ensAppUrl(claimResult.name)}
-                target="_blank"
-                rel="noopener noreferrer"
+                href={`/a/${claimResult.sepoliaId}`}
                 className="text-accent underline-offset-2 hover:underline"
               >
                 {claimResult.name}
@@ -273,30 +275,36 @@ export function SubmitForm({
                 </>
               )}
             </p>
+            {/* Not a link into the ENS App. That resolves through L1, where every
+                key on these names reads null, so it showed a blank profile for a
+                name whose records are set. The records answer on Base Sepolia. */}
             <p className="mt-2 font-data text-[0.72rem] leading-snug text-ink/50">
               {claimResult.trustNote}{" "}
               {claimResult.recordsSeeded ? (
                 <>
+                  The text records answer on {ENS_MIRROR_CHAIN_LABEL} and there
+                  only. Read them on the{" "}
                   <a
-                    href={ensAppUrl(claimResult.name)}
+                    href={ensResolverReadUrl(claimResult.resolver)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-accent underline-offset-2 hover:underline"
                   >
-                    Open in ENS App (Base Sepolia)
-                  </a>{" "}
-                  to read the mirrored text records.
+                    resolver
+                  </a>
+                  , or on the grade page above.
                 </>
               ) : (
                 <>
-                  After a grade is published, claim again to seed them, then open{" "}
+                  After a grade is published, claim again to seed them. They will
+                  answer on {ENS_MIRROR_CHAIN_LABEL}, readable on the{" "}
                   <a
-                    href={ensAppUrl(claimResult.name)}
+                    href={ensResolverReadUrl(claimResult.resolver)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-accent underline-offset-2 hover:underline"
                   >
-                    ENS App (Base Sepolia)
+                    resolver
                   </a>
                   .
                 </>

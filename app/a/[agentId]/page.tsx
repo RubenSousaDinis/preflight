@@ -3,7 +3,10 @@ import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { Container } from "../../components/container";
 import { agentLabelFor } from "../../lib/agent-display";
-import { ensAppUrl } from "../../lib/ens-app-url";
+import {
+  ENS_MIRROR_CHAIN_LABEL,
+  ensResolverReadUrl,
+} from "../../lib/ens-mirror-url";
 import { loadAgentGradePage } from "../../lib/agent-grade-page";
 import { gradeColor } from "../../lib/tokens";
 
@@ -114,18 +117,36 @@ export default async function AgentGradePage({
                     : new Date(page.expiresAt * 1000).toISOString()
                 }
               />
-              {page.ensName !== null ? (
+              {page.ens !== null ? (
                 <Row
                   label="ENS"
                   value={
-                    <a
-                      href={ensAppUrl(page.ensName)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="break-all text-accent underline-offset-2 hover:underline"
-                    >
-                      {page.ensName}
-                    </a>
+                    <>
+                      <span className="break-all font-data text-[0.8rem]">
+                        {page.ens.name}
+                      </span>
+                      {/* The name is text rather than a link because the place it
+                          would link to, the ENS App, resolves through L1 and reads
+                          null for every key here. The records answer on Base
+                          Sepolia, so that is where the reader is sent. */}
+                      <span className="mt-1 block font-data text-[0.7rem] leading-snug text-meta">
+                        Records live on {ENS_MIRROR_CHAIN_LABEL} and answer there
+                        only. Read them with{" "}
+                        <span className="text-ink/70">text(node, key)</span> on the{" "}
+                        <a
+                          href={ensResolverReadUrl(page.ens.resolver)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-accent underline-offset-2 hover:underline"
+                        >
+                          resolver
+                        </a>
+                        .
+                      </span>
+                      <span className="mt-1 block font-data text-[0.7rem] break-all text-meta">
+                        node {page.ens.node}
+                      </span>
+                    </>
                   }
                 />
               ) : null}
