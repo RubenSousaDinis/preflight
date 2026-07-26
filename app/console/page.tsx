@@ -255,11 +255,44 @@ export default async function ConsolePage({
             <>
               <Head
                 title="Receipts"
-                meta={`${receipts[0].receipts.length} IN THE CHAIN / ED25519, HASH CHAINED`}
-                lede="The receipts a run produces are shown with that run, on the hiring floor. This chain is the fixture set, kept because the verifier rejects it: a screen that can only ever agree is not worth putting a verifier behind."
+                meta={`${receipts[0].intact.receipts.length} IN THE CHAIN / ED25519, HASH CHAINED`}
+                lede="The receipts a run produces are shown with that run, on the hiring floor. These two were signed when this page loaded. They are the same chain, and one of them has a single receipt edited after the fact, so what separates the two verdicts below is that edit and nothing else. A panel that could only ever reach one of the two answers would be reporting nothing about the verifier."
               />
-              <ReceiptChain log={receipts[0]} />
-              <div className="mt-5 space-y-4">
+
+              <section>
+                <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                  <h2 className="font-display text-[1.25rem] leading-tight font-semibold">
+                    The chain as it was signed
+                  </h2>
+                  <p className="font-data text-[10.5px] tracking-[0.1em] text-meta">
+                    UNTOUCHED / verifyChain()
+                  </p>
+                </div>
+                <ReceiptChain log={receipts[0].intact} />
+              </section>
+
+              <section className="mt-8">
+                <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                  <h2 className="font-display text-[1.25rem] leading-tight font-semibold">
+                    The same chain, one receipt edited
+                  </h2>
+                  <p className="font-data text-[10.5px] tracking-[0.1em] text-meta">
+                    TAMPERED COPY / verifyChain()
+                  </p>
+                </div>
+                <p className="mb-3 max-w-[46rem] text-[14px] leading-snug text-muted">
+                  {`Above, ${receipts[0].tamperNote}`}
+                </p>
+                <ReceiptChain log={receipts[0].tampered} />
+                <p className="mt-3 max-w-[46rem] text-[14px] leading-snug text-muted">
+                  The hash and the signature on that receipt are the ones it was
+                  signed with. They are still valid for what the receipt used to
+                  say, which is why the verifier reports the subject rather than
+                  the signature: the proof did not change, the record did.
+                </p>
+              </section>
+
+              <div className="mt-8 space-y-4">
                 <MirrorLine status={receipts[1]} />
                 <EnsMirrorLine mirror={receipts[2]} />
               </div>
