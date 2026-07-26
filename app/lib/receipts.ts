@@ -1,5 +1,6 @@
+import { receiptDemonstration } from "@/src/receipts/demonstration";
 import { verifyChain } from "@/src/receipts/receipt-chain";
-import { FIXTURE_RECEIPT_CHAIN } from "@/src/shared/fixtures";
+import type { Receipt } from "@/src/shared";
 import { toRenderableError } from "./errors";
 import type { ReceiptLog } from "./receipt-view";
 
@@ -7,17 +8,32 @@ import type { ReceiptLog } from "./receipt-view";
   B2's verifyChain runs against whatever is on screen, and what it says is what the
   panel renders, intact or broken.
 
-  The chain it runs against today is still the fixture chain, whose hashes and
-  signatures are labelled stand-ins rather than Ed25519 output, so the verifier is
-  expected to reject it. That is the correct outcome and the panel shows it: a
-  chain that does not verify renders as a chain that does not verify, which is a
-  more useful thing for this screen to be able to do than always agreeing.
+  It now runs against two chains rather than one. The panel used to carry the frozen
+  fixture set alone, whose hashes were labelled stand-ins, so the verifier rejected
+  it on the opening receipt and stopped there, before it had checked a single link,
+  hash or signature. That screen could only ever report a break, which tells a
+  reader as little as a screen that could only ever report agreement: either way the
+  answer does not depend on what was handed over, so nothing about the verifier was
+  being shown.
+
+  Both chains here are real and both are signed on this request. The second is the
+  first with one receipt edited after signing, so the difference between the two
+  verdicts is that edit and nothing else.
 
   TODO-INTEGRATE: the receipts themselves come from the live gates once beat 1 runs
   end to end. Nothing above this line changes when they do.
 */
-export async function loadReceipts(): Promise<ReceiptLog> {
-  const receipts = FIXTURE_RECEIPT_CHAIN;
+
+export type ReceiptDemo = {
+  /** Signed and linked. The verifier accepts this one. */
+  intact: ReceiptLog;
+  /** The same receipts with one edited after the fact. The verifier names it. */
+  tampered: ReceiptLog;
+  /** What was changed, so the page states it rather than leaving it to be inferred. */
+  tamperNote: string;
+};
+
+async function checked(receipts: Receipt[]): Promise<ReceiptLog> {
   try {
     return { receipts, verification: await verifyChain(receipts) };
   } catch (thrown) {
@@ -28,4 +44,13 @@ export async function loadReceipts(): Promise<ReceiptLog> {
       verification: { ok: false, brokenAt: null, reason: failure.reason },
     };
   }
+}
+
+export async function loadReceipts(): Promise<ReceiptDemo> {
+  const { intact, tampered, tamperNote } = await receiptDemonstration();
+  const [intactLog, tamperedLog] = await Promise.all([
+    checked(intact),
+    checked(tampered),
+  ]);
+  return { intact: intactLog, tampered: tamperedLog, tamperNote };
 }

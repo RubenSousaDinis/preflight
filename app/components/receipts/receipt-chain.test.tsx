@@ -9,6 +9,9 @@ import { ReceiptChain } from "./receipt-chain";
 /*
   The receipt panel's one way of being dangerously wrong is letting a chain nobody
   checked look like a chain that passed.
+
+  Its second way, less dangerous and more embarrassing, is only ever reaching one
+  verdict. These tests pin both answers, because the page now shows both.
 */
 
 function stripTags(markup: string): string {
@@ -16,42 +19,57 @@ function stripTags(markup: string): string {
 }
 
 test("a chain the verifier has not run against never renders as verified", async () => {
-  const log = await loadReceipts();
+  const { intact } = await loadReceipts();
 
   // The component's null branch, exercised directly: absence of a check is
   // rendered as absence of a check, never as a check that passed.
   const text = stripTags(
-    renderToStaticMarkup(<ReceiptChain log={{ ...log, verification: null }} />),
+    renderToStaticMarkup(<ReceiptChain log={{ ...intact, verification: null }} />),
   );
   assert.match(text, /not verified/);
   assert.doesNotMatch(text, /chain verified/);
   assert.match(text, /nothing here claims the signatures hold/);
 });
 
-test("the verifier rejects the stand-in fixtures, and the panel says so", async () => {
-  const log = await loadReceipts();
+test("the signed chain verifies, and the panel says so", async () => {
+  const { intact } = await loadReceipts();
 
-  // The fixture hashes and signatures are labelled stand-ins rather than Ed25519
-  // output, so a verifier that accepted them would be the broken thing here.
-  assert.ok(log.verification, "verifyChain has to have produced a verdict");
-  assert.equal(log.verification.ok, false);
+  assert.ok(intact.verification, "verifyChain has to have produced a verdict");
+  assert.equal(intact.verification.ok, true, intact.verification.reason ?? "");
+  assert.equal(intact.verification.brokenAt, null);
+
+  const text = stripTags(renderToStaticMarkup(<ReceiptChain log={intact} />));
+  assert.match(text, /chain verified/);
+  assert.doesNotMatch(text, /chain broken/);
+});
+
+test("the edited copy is rejected, and the panel names the receipt it caught", async () => {
+  const { tampered } = await loadReceipts();
+
+  assert.ok(tampered.verification, "verifyChain has to have produced a verdict");
+  assert.equal(tampered.verification.ok, false);
   assert.ok(
-    log.verification.reason && log.verification.reason.length > 0,
+    tampered.verification.reason && tampered.verification.reason.length > 0,
     "a rejection has to say which two values disagree",
   );
+  // Past the opening receipt, so the links and signatures before it were checked
+  // and accepted rather than skipped.
+  assert.ok(
+    tampered.verification.brokenAt !== null && tampered.verification.brokenAt > 0,
+  );
 
-  const text = stripTags(renderToStaticMarkup(<ReceiptChain log={log} />));
+  const text = stripTags(renderToStaticMarkup(<ReceiptChain log={tampered} />));
   assert.match(text, /chain broken/);
   assert.doesNotMatch(text, /chain verified/);
 });
 
 test("a broken chain renders the break and where it happened", async () => {
-  const log = await loadReceipts();
+  const { intact } = await loadReceipts();
   const text = stripTags(
     renderToStaticMarkup(
       <ReceiptChain
         log={{
-          ...log,
+          ...intact,
           verification: {
             ok: false,
             brokenAt: 2,
@@ -68,11 +86,11 @@ test("a broken chain renders the break and where it happened", async () => {
 });
 
 test("every receipt renders its hash, its prevHash, and its signer in full", async () => {
-  const log = await loadReceipts();
-  const markup = renderToStaticMarkup(<ReceiptChain log={log} />);
+  const { intact } = await loadReceipts();
+  const markup = renderToStaticMarkup(<ReceiptChain log={intact} />);
 
-  assert.ok(log.receipts.length > 1);
-  for (const receipt of log.receipts) {
+  assert.ok(intact.receipts.length > 1);
+  for (const receipt of intact.receipts) {
     assert.ok(markup.includes(receipt.hash), `${receipt.id} hash must render`);
     assert.ok(markup.includes(receipt.responseHash));
     assert.ok(markup.includes(receipt.sig));
@@ -83,22 +101,22 @@ test("every receipt renders its hash, its prevHash, and its signer in full", asy
   }
 });
 
-test("the fixture chain links, and a tampered link reads as a break", async () => {
-  const log = await loadReceipts();
-  for (let index = 0; index < log.receipts.length; index += 1) {
+test("the signed chain links, and a tampered link reads as a break", async () => {
+  const { intact } = await loadReceipts();
+  for (let index = 0; index < intact.receipts.length; index += 1) {
     assert.ok(
-      linksToPrevious(log.receipts, index),
+      linksToPrevious(intact.receipts, index),
       `receipt ${index + 1} should link to the one before it`,
     );
   }
 
-  const tampered: Receipt[] = log.receipts.map((receipt, index) =>
+  const tampered: Receipt[] = intact.receipts.map((receipt, index) =>
     index === 2 ? { ...receipt, prevHash: receipt.hash } : receipt,
   );
   assert.equal(linksToPrevious(tampered, 2), false);
 
   const text = stripTags(
-    renderToStaticMarkup(<ReceiptChain log={{ ...log, receipts: tampered }} />),
+    renderToStaticMarkup(<ReceiptChain log={{ ...intact, receipts: tampered }} />),
   );
   assert.match(text, /prevHash does not match the hash above/);
 });
