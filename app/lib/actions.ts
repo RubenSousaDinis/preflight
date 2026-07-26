@@ -1,6 +1,7 @@
 "use server";
 
 import { getAddress, isAddress } from "viem";
+import { scanAddress, type ScanReport } from "@/src/gates/tx/scan/llm-scan";
 import { DETECTORS, txGuard } from "@/src/gates/tx/txguard";
 import type { Address, Hex, PendingTx } from "@/src/shared";
 import { toRenderableError, type RenderableError } from "./errors";
@@ -32,9 +33,15 @@ export type UnseenResult =
       kind: "decided";
       address: string;
       chainLabel: string;
+      /** Carried so a later scan runs on the chain this verdict was produced for. */
+      chainId: number;
       verdict: VerdictView;
       scope: RunScope;
     };
+
+export type ScanResult =
+  | { kind: "invalid"; message: string }
+  | { kind: "report"; address: string; report: ScanReport };
 
 /**
  * The sender used when the operator does not name one.
@@ -99,6 +106,7 @@ export async function checkUnseenAddress(
       kind: "decided",
       address: to,
       chainLabel: chainLabel(chainId),
+      chainId,
       verdict: toVerdictView(verdict),
       scope: {
         detectorCount: DETECTORS.length,
@@ -111,6 +119,52 @@ export async function checkUnseenAddress(
       address: to,
       chainLabel: chainLabel(chainId),
       error: toRenderableError(thrown),
+    };
+  }
+}
+
+/*
+  The advisory scan, run on demand against an address the verdict was already produced for.
+
+  Separate from the check above rather than folded into it, for two reasons. The scan reads
+  published source and waits on a model, which is tens of seconds next to a verdict that arrives in
+  a few, and holding the verdict back until the slow half finishes would make the fast half look
+  slow for no gain. And the separation is the architecture made visible: the verdict is complete
+  before this runs, so nothing here can be mistaken for something that contributed to it.
+
+  Every failure becomes a rendered not-scanned. `scanAddress` already turns a model error into one;
+  this catch covers the source fetch, which throws. Neither path can produce something that reads
+  as a clean result, which is the only property this function has to hold.
+*/
+export async function scanPastedAddress(
+  _previous: ScanResult | null,
+  formData: FormData,
+): Promise<ScanResult> {
+  const pastedAddress = String(formData.get("address") ?? "").trim();
+  const chainId = Number(formData.get("chainId") ?? 8453);
+
+  if (!isAddress(pastedAddress)) {
+    return {
+      kind: "invalid",
+      message: "That is not an address, so there was nothing to scan.",
+    };
+  }
+  const to = getAddress(pastedAddress);
+
+  try {
+    return { kind: "report", address: to, report: await scanAddress(chainId, to) };
+  } catch (thrown) {
+    return {
+      kind: "report",
+      address: to,
+      report: {
+        state: "not-scanned",
+        route: null,
+        reason: toRenderableError(thrown).reason,
+        flags: [],
+        findings: [],
+        discarded: [],
+      },
     };
   }
 }

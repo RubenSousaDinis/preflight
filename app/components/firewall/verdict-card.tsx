@@ -1,6 +1,8 @@
+import type { ScanReport } from "@/src/gates/tx/scan/llm-scan";
 import type { VerdictView } from "../../lib/verdict-view";
 import { FlagList } from "./flag-list";
 import { ReproducibilityFooter } from "./reproducibility-footer";
+import { ScanReportPanel } from "./scan-report";
 
 /*
   One TxVerdict, in the reading order the beat needs: verdict, reason, drift, flags,
@@ -103,7 +105,20 @@ function Section({
   );
 }
 
-export function VerdictCard({ verdict }: { verdict: VerdictView }) {
+/**
+ * `scan` is optional and renders after the flags, never above them.
+ *
+ * Reading order is the argument: the four checks decided this, and the scan is
+ * something that also happened. A scan panel above the flags would read as the
+ * thing that produced the verdict, which is the one thing it can never be.
+ */
+export function VerdictCard({
+  verdict,
+  scan,
+}: {
+  verdict: VerdictView;
+  scan?: ScanReport | null;
+}) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start gap-4">
@@ -127,6 +142,12 @@ export function VerdictCard({ verdict }: { verdict: VerdictView }) {
       <Section label="flags">
         <FlagList flags={verdict.flags} verdict={verdict.verdict} />
       </Section>
+
+      {scan ? (
+        <Section label="source scan">
+          <ScanReportPanel report={scan} />
+        </Section>
+      ) : null}
 
       <Section label="balance movements">
         <Deltas deltas={verdict.deltas} />
